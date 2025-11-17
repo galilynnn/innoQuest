@@ -131,7 +131,3 @@ git push
 ```
 
 Environment variables are automatically configured from Supabase integration.
-
-## Support
-
-For issues or questions, contact the development team or create an issue in the repository.
