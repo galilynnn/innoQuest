@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import LobbyControl from './lobby-control'
+import WeekProgression from './week-progression'
 
 interface GameSettings {
   id: string
@@ -16,9 +18,10 @@ interface GameSettings {
 interface GameConfigurationProps {
   gameId: string
   onSettingsUpdated?: () => void
+  onSwitchToTeams?: () => void
 }
 
-export default function GameConfiguration({ gameId, onSettingsUpdated }: GameConfigurationProps) {
+export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchToTeams }: GameConfigurationProps) {
   const supabase = createClient()
   const [settings, setSettings] = useState<GameSettings | null>(null)
   const [weeks, setWeeks] = useState<number>(10)
@@ -29,11 +32,15 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
 
   useEffect(() => {
     const loadSettings = async () => {
+      console.log('Loading settings for gameId:', gameId)
+      
       const { data, error } = await supabase
         .from('game_settings')
         .select('*')
         .eq('game_id', gameId)
         .single()
+
+      console.log('Load settings result:', { data, error })
 
       if (data) {
         setSettings(data)
@@ -41,9 +48,10 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
         setWeekDuration(data.week_duration_minutes)
         setMaxTeams(data.max_teams)
         setGameActive(data.game_status === 'active')
-      } else {
-        // Create new game settings if doesn't exist
-        const { data: newSettings } = await supabase
+      } else if (error && error.code === 'PGRST116') {
+        // No record found - create one
+        console.log('No settings found, creating new record...')
+        const { data: newSettings, error: insertError } = await supabase
           .from('game_settings')
           .insert({
             game_id: gameId,
@@ -56,9 +64,18 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
           .select()
           .single()
 
+        console.log('Create settings result:', { newSettings, insertError })
+
         if (newSettings) {
           setSettings(newSettings)
+          setWeeks(newSettings.total_weeks)
+          setWeekDuration(newSettings.week_duration_minutes)
+          setMaxTeams(newSettings.max_teams)
+        } else {
+          alert('Error creating game settings: ' + insertError?.message)
         }
+      } else {
+        alert('Error loading settings: ' + error?.message)
       }
       setLoading(false)
     }
@@ -67,7 +84,10 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
   }, [gameId, supabase])
 
   const handleUpdateSettings = async () => {
-    if (!settings) return
+    if (!settings) {
+      alert('Error: No settings loaded')
+      return
+    }
 
     // Validate max teams
     if (maxTeams < 1 || maxTeams > 10) {
@@ -75,7 +95,9 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
       return
     }
 
-    const { error } = await supabase
+    console.log('Saving settings:', { weeks, weekDuration, maxTeams, gameId })
+
+    const { data, error } = await supabase
       .from('game_settings')
       .update({
         total_weeks: weeks,
@@ -83,12 +105,27 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
         max_teams: maxTeams,
       })
       .eq('game_id', gameId)
+      .select()
+
+    console.log('Save result:', { data, error })
 
     if (!error) {
-      alert('Settings updated successfully! Go to Teams tab to set up team credentials.')
+      // Update local settings state
+      setSettings({
+        ...settings,
+        total_weeks: weeks,
+        week_duration_minutes: weekDuration,
+        max_teams: maxTeams,
+      })
+
       // Trigger teams management refresh
       if (onSettingsUpdated) {
         onSettingsUpdated()
+      }
+      
+      const goToTeams = confirm('Settings updated successfully! Max teams set to ' + maxTeams + '.\n\nGo to Teams tab now to set up credentials?')
+      if (goToTeams && onSwitchToTeams) {
+        onSwitchToTeams()
       }
     } else {
       alert('Error updating settings: ' + error.message)
@@ -239,6 +276,10 @@ export default function GameConfiguration({ gameId, onSettingsUpdated }: GameCon
           </ol>
         </div>
       </div>
+
+      <LobbyControl />
+      
+      <WeekProgression />
 
       <div className="bg-card border border-border rounded-lg p-6">
         <h2 className="text-2xl font-serif font-bold mb-4">Session Status</h2>

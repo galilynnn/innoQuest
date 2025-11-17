@@ -10,6 +10,8 @@ interface TeamSlot {
   password: string
   isEditing: boolean
   exists: boolean
+  lastActivity: string | null
+  isActive: boolean
 }
 
 interface TeamsManagementProps {
@@ -45,10 +47,10 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
     
     setMaxTeams(maxTeamsCount)
 
-    // Load existing teams
+    // Load existing teams with last_activity to check online status
     const { data: teams } = await supabase
       .from('teams')
-      .select('id, username, password_hash')
+      .select('id, username, password_hash, last_activity, is_active')
       .eq('game_id', gameId)
       .order('created_at', { ascending: true })
 
@@ -63,6 +65,8 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           password: teams[i].password_hash,
           isEditing: false,
           exists: true,
+          lastActivity: teams[i].last_activity,
+          isActive: teams[i].is_active,
         })
       } else {
         slots.push({
@@ -72,6 +76,8 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           password: '',
           isEditing: false,
           exists: false,
+          lastActivity: null,
+          isActive: false,
         })
       }
     }
@@ -121,6 +127,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           successful_rnd_tests: 0,
           funding_stage: 'Pre-Seed',
           is_active: true,
+          last_activity: null, // Set to null so team shows as "Not Joined" until they log in
         })
         .select('id')
         .single()
@@ -151,6 +158,8 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
         password: '',
         isEditing: false,
         exists: false,
+        lastActivity: null,
+        isActive: false,
       }
       setTeamSlots(newSlots)
     } else {
@@ -186,6 +195,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
               <th className="text-left py-3 px-4 font-semibold text-gray-900">ID</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-900">Username</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-900">Password</th>
+              <th className="text-center py-3 px-4 font-semibold text-gray-900">Status</th>
               <th className="text-center py-3 px-4 font-semibold text-gray-900">Edit/Confirm</th>
             </tr>
           </thead>
@@ -223,6 +233,27 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
                     <span className="font-mono text-gray-900">
                       {slot.password || <span className="text-gray-400">Not set</span>}
                     </span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-center">
+                  {slot.exists ? (
+                    (() => {
+                      // Check if team has logged in (has last_activity)
+                      const hasLoggedIn = slot.lastActivity !== null
+                      
+                      return (
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                          hasLoggedIn ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full ${
+                            hasLoggedIn ? 'bg-green-500' : 'bg-gray-400'
+                          }`}></span>
+                          {hasLoggedIn ? 'Joined' : 'Not Joined'}
+                        </span>
+                      )
+                    })()
+                  ) : (
+                    <span className="text-gray-400 text-xs">-</span>
                   )}
                 </td>
                 <td className="py-3 px-4 text-center">

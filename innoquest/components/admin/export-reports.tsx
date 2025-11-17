@@ -38,9 +38,9 @@ export default function ExportReports({ gameId }: ExportReportsProps) {
     try {
       const report = await generateGameReport(gameId)
 
-      let csv = 'Team Name,Final Balance,Funding Stage,R&D Tests Passed,Status\n'
+      let csv = 'Team Name,Final Balance,Funding Stage,R&D Tests Passed,Statusn'
       report.teams.forEach((team) => {
-        csv += `"${team.teamName}",${team.finalBalance},"${team.fundingStage}",${team.rdTestsPassed},"${team.passFailStatus}"\n`
+        csv += `"${team.teamName}",${team.finalBalance},"${team.fundingStage}",${team.rdTestsPassed},"${team.passFailStatus}"n`
       })
 
       const blob = new Blob([csv], { type: 'text/csv' })

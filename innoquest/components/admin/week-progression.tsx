@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { useGame } from '@/lib/game-context'
 import { createClient } from '@/lib/supabase/client'
@@ -10,6 +10,36 @@ export default function WeekProgression() {
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [advancing, setAdvancing] = useState(false)
+  const [teamsStatus, setTeamsStatus] = useState({ total: 0, joined: 0 })
+  const gameId = '00000000-0000-0000-0000-000000000001'
+
+  useEffect(() => {
+    loadTeamsStatus()
+    
+    // Auto-refresh every 3 seconds
+    const interval = setInterval(loadTeamsStatus, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const loadTeamsStatus = async () => {
+    const { data: settings } = await supabase
+      .from('game_settings')
+      .select('max_teams')
+      .eq('game_id', gameId)
+      .single()
+
+    const { data: teams } = await supabase
+      .from('teams')
+      .select('id, is_active, last_activity')
+      .eq('game_id', gameId)
+
+    const maxTeams = settings?.max_teams || 0
+    
+    // Count teams that have logged in (have last_activity)
+    const joinedTeams = teams?.filter(t => t.last_activity !== null).length || 0
+
+    setTeamsStatus({ total: maxTeams, joined: joinedTeams })
+  }
 
   const progressPercentage = gameState.totalWeeks > 0 
     ? (gameState.currentWeek / gameState.totalWeeks) * 100 
@@ -19,10 +49,10 @@ export default function WeekProgression() {
 
   // Calculate team progression stages
   const teamsByStage = {
-    seed: gameState.teams.filter(t => t.fundingStage === 'Seed').length,
-    seriesA: gameState.teams.filter(t => t.fundingStage === 'Series A').length,
-    seriesB: gameState.teams.filter(t => t.fundingStage === 'Series B').length,
-    seriesC: gameState.teams.filter(t => t.fundingStage === 'Series C').length,
+    seed: gameState.teams.filter(t => t.funding_stage === 'Seed').length,
+    seriesA: gameState.teams.filter(t => t.funding_stage === 'Series A').length,
+    seriesB: gameState.teams.filter(t => t.funding_stage === 'Series B').length,
+    seriesC: gameState.teams.filter(t => t.funding_stage === 'Series C').length,
   }
 
   const handleAdvanceWeek = async () => {
@@ -31,7 +61,20 @@ export default function WeekProgression() {
       return
     }
 
-    if (!confirm(`Advance from Week ${gameState.currentWeek} to Week ${gameState.currentWeek + 1}?`)) {
+    // Check if all teams have joined
+    if (teamsStatus.joined < teamsStatus.total) {
+      const disconnected = teamsStatus.total - teamsStatus.joined
+      const proceed = confirm(
+        `⚠️ WARNING: ${disconnected} player${disconnected > 1 ? 's are' : ' is'} disconnected!\n\n` +
+        `Only ${teamsStatus.joined} out of ${teamsStatus.total} teams are currently active in the game.\n\n` +
+        `❌ Disconnected players will NOT be processed this round\n` +
+        `✅ Only active players will advance to the next week\n\n` +
+        `This may cause players to fall behind. Do you want to proceed anyway?`
+      )
+      if (!proceed) return
+    }
+
+    if (!confirm(`🚀 Advance from Week ${gameState.currentWeek} to Week ${gameState.currentWeek + 1}?\n\nThis will:\n• Process ALL active team decisions\n• Calculate results for everyone simultaneously\n• Move everyone to the next week together\n\nContinue?`)) {
       return
     }
 
@@ -41,16 +84,20 @@ export default function WeekProgression() {
       const response = await fetch('/api/advance-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
       })
 
+      const result = await response.json()
+
       if (response.ok) {
-        alert('Week advanced successfully! All teams processed.')
+        alert(`✅ ${result.message}\n\nWeek ${result.currentWeek} / ${result.totalWeeks}`)
         window.location.reload()
       } else {
-        alert('Failed to advance week')
+        alert(`❌ Failed: ${result.error || 'Unknown error'}\n\nActive teams: ${result.activeCount || 0}`)
       }
     } catch (error) {
-      alert('Error advancing week')
+      console.error('Error advancing week:', error)
+      alert('❌ Network error while advancing week')
     } finally {
       setAdvancing(false)
     }
@@ -66,6 +113,25 @@ export default function WeekProgression() {
         </h2>
 
         <div className="space-y-4">
+          {/* Teams Status */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-blue-900">Teams Status:</span>
+                <span className={`text-sm font-bold ${
+                  teamsStatus.joined === teamsStatus.total ? 'text-green-600' : 'text-orange-600'
+                }`}>
+                  {teamsStatus.joined} / {teamsStatus.total} Joined
+                </span>
+              </div>
+              {teamsStatus.joined === teamsStatus.total && (
+                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-semibold">
+                  ✓ All Ready
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* Timeline */}
           <div>
             <div className="flex justify-between mb-2">

@@ -53,33 +53,33 @@ A comprehensive web-based business simulation game built with Next.js, TypeScrip
 - Supabase account with configured database
 
 ### Environment Variables
-\`\`\`
+```
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-\`\`\`
+```
 
 ### Installation
 
 1. Install dependencies:
-\`\`\`bash
+```bash
 npm install
-\`\`\`
+```
 
 2. Run the database migration:
-\`\`\`bash
+```bash
 npx supabase db push
-\`\`\`
+```
 
 3. Seed sample data:
-\`\`\`bash
+```bash
 # Run the SQL scripts in scripts/ folder via Supabase dashboard
-\`\`\`
+```
 
 4. Start development server:
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
 5. Open http://localhost:3000
 
@@ -126,9 +126,9 @@ npm run dev
 ## Deployment
 
 Deploy to Vercel with one command:
-\`\`\`bash
+```bash
 git push
-\`\`\`
+```
 
 Environment variables are automatically configured from Supabase integration.
 

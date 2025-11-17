@@ -19,6 +19,7 @@ interface TeamData {
 }
 
 interface GameSettings {
+  game_id: string
   current_week: number
   total_weeks: number
   game_status: string
@@ -33,14 +34,25 @@ export default function StudentGameplay() {
 
   useEffect(() => {
     const loadData = async () => {
-      // Try to load from database first
-      const { data: teams } = await supabase
+      // Get team ID from session
+      const teamId = sessionStorage.getItem('team_id')
+      const teamName = sessionStorage.getItem('team_name')
+      const gameId = sessionStorage.getItem('game_id')
+
+      if (!teamId) {
+        // Not logged in, redirect to login
+        window.location.href = '/student/login'
+        return
+      }
+
+      // Load team data from database
+      const { data: teamData } = await supabase
         .from('teams')
         .select('*')
-        .limit(1)
+        .eq('id', teamId)
+        .single()
 
-      if (teams && teams.length > 0) {
-        const teamData = teams[0]
+      if (teamData) {
         setTeam(teamData)
 
         // Load game settings
@@ -51,33 +63,46 @@ export default function StudentGameplay() {
           .single()
 
         if (settingsData) {
+          // Check if game hasn't started yet
+          if (settingsData.game_status !== 'active' && settingsData.game_status !== 'completed') {
+            window.location.href = '/student/lobby'
+            return
+          }
+          
           setGameSettings(settingsData)
         }
-      } else {
-        // Use mock data for prototype
-        setTeam({
-          id: 'mock-team-1',
-          team_name: 'Demo Team',
-          game_id: 'mock-game-1',
-          total_balance: 100000,
-          successful_rnd_tests: 0,
-          funding_stage: 'Seed Round'
-        })
-        setGameSettings({
-          current_week: 1,
-          total_weeks: 10,
-          game_status: 'active'
-        })
       }
 
       setLoading(false)
     }
 
     loadData()
+
+    // Heartbeat: Update last_activity every 10 seconds to show player is active
+    const heartbeat = setInterval(async () => {
+      const teamId = sessionStorage.getItem('team_id')
+      if (teamId) {
+        await supabase
+          .from('teams')
+          .update({ 
+            last_activity: new Date().toISOString(),
+            is_active: true 
+          })
+          .eq('id', teamId)
+      }
+    }, 10000) // Every 10 seconds
+
+    return () => clearInterval(heartbeat)
   }, [supabase])
 
   const handleLogout = async () => {
-    // No-op logout for prototype
+    // Clear session storage
+    sessionStorage.removeItem('team_id')
+    sessionStorage.removeItem('team_name')
+    sessionStorage.removeItem('game_id')
+    
+    // Redirect to home page
+    window.location.href = '/'
   }
 
   if (loading) {

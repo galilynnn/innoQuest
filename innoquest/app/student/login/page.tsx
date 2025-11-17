@@ -19,41 +19,60 @@ export default function StudentLoginPage() {
     try {
       const supabase = createClient()
 
-      // Query teams table to find matching credentials
+      // Query teams table to find matching username AND password
       const { data: team, error: teamError } = await supabase
         .from('teams')
-        .select('id, team_name, game_id')
-        .eq('username', username)
-        .single()
-
-      if (teamError || !team) {
-        setError('Invalid username or password')
-        setLoading(false)
-        return
-      }
-
-      // Verify password (in real app, use proper hashing)
-      const { data: verifyData } = await supabase
-        .from('teams')
-        .select('password_hash')
+        .select('id, team_name, game_id, username, password_hash')
         .eq('username', username)
         .eq('password_hash', password)
         .single()
 
-      if (!verifyData) {
-        setError('Invalid username or password')
+      if (teamError || !team) {
+        setError('Invalid username or password. Please check your credentials.')
         setLoading(false)
         return
       }
+
+      // Update last_activity to track login
+      await supabase
+        .from('teams')
+        .update({ 
+          last_activity: new Date().toISOString(),
+          is_active: true 
+        })
+        .eq('id', team.id)
+
+      // Login successful - show welcome message
+      alert(`Hello ${team.team_name}! Welcome to InnoQuest.`)
 
       // Create session by storing team info
       sessionStorage.setItem('team_id', team.id)
       sessionStorage.setItem('team_name', team.team_name)
       sessionStorage.setItem('game_id', team.game_id)
 
-      router.push('/student/gameplay')
+      console.log('Login successful! Stored game_id:', team.game_id)
+
+      // Check game status to determine where to redirect
+      const { data: gameSettings } = await supabase
+        .from('game_settings')
+        .select('game_status')
+        .eq('game_id', team.game_id)
+        .single()
+
+      console.log('Current game status:', gameSettings?.game_status)
+
+      // Redirect based on game status
+      if (gameSettings?.game_status === 'active') {
+        console.log('Game is active, redirecting to gameplay')
+        router.push('/student/gameplay')
+      } else {
+        // Game in lobby or not started yet
+        console.log('Game in lobby, redirecting to lobby')
+        router.push('/student/lobby')
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError('Login failed. Please try again.')
+      console.error('Login error:', err)
     } finally {
       setLoading(false)
     }

@@ -26,7 +26,7 @@ export default function Home() {
 
         <div className="space-y-4">
           <Link
-            href="/student/gameplay"
+            href="/student/login"
             className="w-full block py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30"
           >
             🚀 Start Student Gameplay
@@ -40,7 +40,7 @@ export default function Home() {
         </div>
 
         <div className="text-center mt-8 text-[13px] text-gray-400">
-          <p className="mb-2">🔓 Authentication disabled for prototype demo</p>
+          <p className="mb-2">🔐 Students: Login with your team credentials</p>
           <p>💻 Optimized for iPad and desktop devices</p>
         </div>
       </div>

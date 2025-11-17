@@ -12,6 +12,7 @@ import DashboardMetrics from './dashboard-metrics'
 import PerformanceAnalytics from './performance-analytics'
 import WeekProgression from './week-progression'
 import ExportReports from './export-reports'
+import LobbyControl from './lobby-control'
 
 interface AdminDashboardProps {
   onBack: () => void
@@ -27,6 +28,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
   const handleSettingsUpdated = () => {
     // Trigger teams management to reload
     setRefreshTeams(prev => prev + 1)
+  }
+
+  const handleSwitchToTeams = () => {
+    setActiveTab('teams')
   }
 
   return (
@@ -52,7 +57,8 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8">
+          <TabsList className="grid w-full grid-cols-7 mb-8">
+            <TabsTrigger value="lobby">Lobby</TabsTrigger>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="teams">Teams</TabsTrigger>
             <TabsTrigger value="configuration">Config</TabsTrigger>
@@ -60,6 +66,10 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             <TabsTrigger value="data">Data</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="lobby" className="space-y-6">
+            <LobbyControl />
+          </TabsContent>
 
           <TabsContent value="overview" className="space-y-6">
             <DashboardMetrics />
@@ -74,7 +84,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           </TabsContent>
 
           <TabsContent value="configuration" className="space-y-6">
-            <GameConfiguration gameId={gameId} onSettingsUpdated={handleSettingsUpdated} />
+            <GameConfiguration 
+              gameId={gameId} 
+              onSettingsUpdated={handleSettingsUpdated}
+              onSwitchToTeams={handleSwitchToTeams}
+            />
           </TabsContent>
 
           <TabsContent value="monitoring" className="space-y-6">
@@ -82,11 +96,11 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           </TabsContent>
 
           <TabsContent value="data" className="space-y-6">
-            <CustomerDataManagement />
+            <CustomerDataManagement gameId={gameId} />
           </TabsContent>
 
           <TabsContent value="reports" className="space-y-6">
-            <ExportReports />
+            <ExportReports gameId={gameId} />
           </TabsContent>
         </Tabs>
       </main>
