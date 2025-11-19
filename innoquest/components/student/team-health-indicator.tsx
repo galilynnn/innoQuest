@@ -25,12 +25,6 @@ export default function TeamHealthIndicator({ teamId }: TeamHealthIndicatorProps
     'Series C': 100,
   }[team.fundingStage] || 0
 
-  const profitTrend = team.history.length >= 2
-    ? team.history[team.history.length - 1].profit >= team.history[team.history.length - 2].profit
-      ? 'up'
-      : 'down'
-    : 'neutral'
-
   return (
     <Card className="card-base">
       <h2 className="text-xl font-serif font-bold text-gray-900 mb-6">
@@ -73,7 +67,7 @@ export default function TeamHealthIndicator({ teamId }: TeamHealthIndicatorProps
         </div>
 
         {/* Status Indicators */}
-        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-border">
+        <div className="grid grid-cols-2 gap-3 pt-4 border-t border-border">
           <div className="text-center p-3 rounded-lg bg-gray-50">
             <p className="text-xs text-gray-600 mb-1">Status</p>
             <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
@@ -89,16 +83,6 @@ export default function TeamHealthIndicator({ teamId }: TeamHealthIndicatorProps
           <div className="text-center p-3 rounded-lg bg-gray-50">
             <p className="text-xs text-gray-600 mb-1">Weeks Active</p>
             <p className="text-xl font-bold text-gray-900">{team.history.length}</p>
-          </div>
-          <div className="text-center p-3 rounded-lg bg-gray-50">
-            <p className="text-xs text-gray-600 mb-1">Profit Trend</p>
-            <span className={`text-xl ${
-              profitTrend === 'up' ? 'text-green-600' :
-              profitTrend === 'down' ? 'text-red-600' :
-              'text-gray-600'
-            }`}>
-              {profitTrend === 'up' ? '↑' : profitTrend === 'down' ? '↓' : '→'}
-            </span>
           </div>
         </div>
       </div>

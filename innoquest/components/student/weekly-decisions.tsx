@@ -6,31 +6,23 @@ import { createClient } from '@/lib/supabase/client'
 interface TeamData {
   id: string
   team_name: string
+  game_id: string
+  assigned_product_id?: string
+  assigned_product_name?: string | null
   total_balance: number
 }
 
 interface GameSettings {
   current_week: number
   total_weeks: number
+  cost_per_analytics?: number
+  rnd_tier_config?: any
 }
 
 interface WeeklyDecisionsProps {
   team: TeamData
   gameSettings: GameSettings
 }
-
-const PRODUCTS = [
-  { id: 2, name: 'Budget Meal Prep', category: 'Budget' },
-  { id: 1, name: 'Organic Meal Kit', category: 'Premium' },
-  { id: 8, name: 'Premium Catering', category: 'Premium' },
-  { id: 3, name: 'Keto Food Box', category: 'Specialty' },
-  { id: 4, name: 'Vegan Options', category: 'Specialty' },
-  { id: 9, name: 'Seasonal Specials', category: 'Specialty' },
-  { id: 5, name: 'Quick Lunch Sets', category: 'Convenience' },
-  { id: 6, name: 'Breakfast Bundles', category: 'Convenience' },
-  { id: 7, name: 'Family Packages', category: 'Family' },
-  { id: 10, name: 'Corporate Meals', category: 'B2B' },
-]
 
 const RND_TIERS = [
   { 
@@ -105,68 +97,223 @@ const RND_STRATEGIES = [
 
 export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsProps) {
   const supabase = createClient()
-  const [selectedProduct, setSelectedProduct] = useState<number>(1)
+  const [assignedProduct, setAssignedProduct] = useState<{ id: string; name: string; category?: string } | null>(null)
   const [price, setPrice] = useState<number>(99)
   const [rndStrategy, setRndStrategy] = useState<string | null>(null)
-  const [rndRound, setRndRound] = useState<number>(0) // Track which R&D round we're in (0 = not started)
-  const [rndTier1, setRndTier1] = useState<string | null>(null) // First R&D tier
-  const [rndTier2, setRndTier2] = useState<string | null>(null) // Second R&D tier (for 2 R&D strategies)
-  const [firstTestFailed, setFirstTestFailed] = useState(false) // Track if first test failed
+  const [rndRound, setRndRound] = useState<number>(0)
+  const [rndTier1, setRndTier1] = useState<string | null>(null)
+  const [rndTier2, setRndTier2] = useState<string | null>(null)
+  const [firstTestFailed, setFirstTestFailed] = useState(false)
   const [analyticsPurchased, setAnalyticsPurchased] = useState(false)
+  const [analyticsQuantity, setAnalyticsQuantity] = useState(0)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [rndTiers, setRndTiers] = useState(RND_TIERS)
 
-  // Calculate estimated revenue
-  const estimatedDemand = Math.round(3000 * (price / 99) * 0.8)
-  const estimatedRevenue = estimatedDemand * price
-  
+  // Load R&D tier config from game settings
+  useEffect(() => {
+    if (gameSettings.rnd_tier_config) {
+      try {
+        const config = gameSettings.rnd_tier_config
+        const tiers = [
+          { 
+            tier: 'basic', 
+            label: 'Basic', 
+            minCost: config.basic?.minCost ?? 30000,
+            maxCost: config.basic?.maxCost ?? 50000,
+            successMin: config.basic?.successMin ?? 15,
+            successMax: config.basic?.successMax ?? 35,
+            multiplierMin: config.basic?.multiplierMin ?? 100,
+            multiplierMax: config.basic?.multiplierMax ?? 120
+          },
+          { 
+            tier: 'standard', 
+            label: 'Standard', 
+            minCost: config.standard?.minCost ?? 60000,
+            maxCost: config.standard?.maxCost ?? 100000,
+            successMin: config.standard?.successMin ?? 45,
+            successMax: config.standard?.successMax ?? 60,
+            multiplierMin: config.standard?.multiplierMin ?? 115,
+            multiplierMax: config.standard?.multiplierMax ?? 135
+          },
+          { 
+            tier: 'advanced', 
+            label: 'Advanced', 
+            minCost: config.advanced?.minCost ?? 110000,
+            maxCost: config.advanced?.maxCost ?? 160000,
+            successMin: config.advanced?.successMin ?? 65,
+            successMax: config.advanced?.successMax ?? 85,
+            multiplierMin: config.advanced?.multiplierMin ?? 130,
+            multiplierMax: config.advanced?.multiplierMax ?? 160
+          },
+          { 
+            tier: 'premium', 
+            label: 'Premium', 
+            minCost: config.premium?.minCost ?? 170000,
+            maxCost: config.premium?.maxCost ?? 200000,
+            successMin: config.premium?.successMin ?? 75,
+            successMax: config.premium?.successMax ?? 95,
+            multiplierMin: config.premium?.multiplierMin ?? 150,
+            multiplierMax: config.premium?.multiplierMax ?? 180
+          }
+        ]
+        setRndTiers(tiers)
+      } catch (error) {
+        console.error('Error loading R&D tier config:', error)
+        // Keep default RND_TIERS on error
+      }
+    }
+  }, [gameSettings.rnd_tier_config])
+
+  // Load assigned product on mount
+  useEffect(() => {
+    if (team.assigned_product_name) {
+      setAssignedProduct({ 
+        id: team.assigned_product_id || '', 
+        name: team.assigned_product_name, 
+        category: 'Assigned' 
+      })
+    }
+  }, [team.assigned_product_name, team.assigned_product_id])
+
   // Calculate R&D cost using average of min and max for both tiers
   const rdCost1 = rndTier1 ? (() => {
-    const tier = RND_TIERS.find((t) => t.tier === rndTier1)
+    const tier = rndTiers.find((t) => t.tier === rndTier1)
     return tier ? (tier.minCost + tier.maxCost) / 2 : 0
   })() : 0
   
   const rdCost2 = rndTier2 ? (() => {
-    const tier = RND_TIERS.find((t) => t.tier === rndTier2)
+    const tier = rndTiers.find((t) => t.tier === rndTier2)
     return tier ? (tier.minCost + tier.maxCost) / 2 : 0
   })() : 0
   
   const rdCost = rdCost1 + rdCost2
   
-  const analyticsCost = analyticsPurchased ? 2000 : 0
+  const costPerAnalytics = gameSettings.cost_per_analytics || 5000
+  const analyticsCost = analyticsQuantity > 0 ? costPerAnalytics * analyticsQuantity : 0
   const totalCosts = 20000 + rdCost + analyticsCost
 
   const handleSubmitDecisions = async () => {
+    if (!assignedProduct) {
+      alert('No product assigned yet. Please contact admin.')
+      return
+    }
+
     setLoading(true)
+    
+    const submissionData = {
+      team_id: team.id,
+      team_name: team.team_name,
+      week_number: gameSettings.current_week,
+      selected_product: assignedProduct.id,
+      product_name: assignedProduct.name,
+      set_price: price,
+      costs: totalCosts,
+      rnd_strategy: rndStrategy,
+      rnd_strategy_name: rndStrategy ? RND_STRATEGIES.find(s => s.id === rndStrategy)?.name : 'None',
+      rnd_tier: rndTier1,
+      rnd_tier_name: rndTier1 ? rndTiers.find(t => t.tier === rndTier1)?.label : null,
+      rnd_tier_2: rndTier2,
+      rnd_tier_2_name: rndTier2 ? rndTiers.find(t => t.tier === rndTier2)?.label : null,
+      analytics_purchased: analyticsQuantity > 0,
+      analytics_quantity: analyticsQuantity,
+      pass_fail_status: 'pending',
+      bonus_earned: 0,
+    }
+
+    console.log('========================================')
+    console.log('WEEKLY DECISIONS SUBMISSION')
+    console.log('========================================')
+    console.log('Team:', submissionData.team_name)
+    console.log('Week:', submissionData.week_number)
+    console.log('Product:', submissionData.product_name)
+    console.log('Price:', `฿${submissionData.set_price}`)
+    console.log('R&D Strategy:', submissionData.rnd_strategy_name)
+    if (submissionData.rnd_tier_name) {
+      console.log('R&D Test 1:', submissionData.rnd_tier_name)
+    }
+    if (submissionData.rnd_tier_2_name) {
+      console.log('R&D Test 2:', submissionData.rnd_tier_2_name)
+    }
+    console.log('Analytics Tools:', submissionData.analytics_purchased ? 'Yes' : 'No')
+    console.log('Total Costs:', `฿${submissionData.costs.toLocaleString()}`)
+    console.log('Timestamp:', new Date().toISOString())
+    console.log('========================================')
+
     try {
-      const { data, error } = await supabase.from('weekly_results').insert({
-        team_id: team.id,
-        week_number: gameSettings.current_week,
-        set_price: price,
-        demand: estimatedDemand,
-        revenue: estimatedRevenue,
-        costs: totalCosts,
-        profit: estimatedRevenue - totalCosts,
-        rnd_strategy: rndStrategy,
-        rnd_tier: rndTier1, // Primary tier
-        rnd_tier_2: rndTier2, // Secondary tier (if applicable)
-        analytics_purchased: analyticsPurchased,
-        pass_fail_status: 'pending',
-        bonus_earned: 0,
+      console.log('📝 Team object:', team)
+      console.log('📝 Attempting to insert:', {
+        teams_id: submissionData.team_id,
+        game_id: team.game_id,
+        week_number: submissionData.week_number,
+        set_price: submissionData.set_price,
+        costs: submissionData.costs,
+        rnd_tier: submissionData.rnd_tier,
+        analytics_purchased: submissionData.analytics_purchased,
       })
 
-      if (!error) {
-        alert('Decisions submitted successfully!')
-        setShowConfirmation(false)
-        setPrice(99)
-        setRndStrategy(null)
-        setRndRound(0)
-        setRndTier1(null)
-        setRndTier2(null)
-        setFirstTestFailed(false)
-        setAnalyticsPurchased(false)
+      const insertPayload = {
+        team_id: submissionData.team_id,
+        game_id: team.game_id,
+        week_number: submissionData.week_number,
+        set_price: submissionData.set_price,
+        costs: submissionData.costs,
+        rnd_tier: submissionData.rnd_tier,
+        analytics_purchased: submissionData.analytics_purchased,
+        pass_fail_status: submissionData.pass_fail_status,
+        bonus_earned: submissionData.bonus_earned,
       }
+      
+      console.log('📝 Payload to insert:', JSON.stringify(insertPayload, null, 2))
+
+      const { data, error } = await supabase.from('weekly_results').insert(insertPayload)
+
+      console.log('📊 Insert response - Data:', data)
+      console.log('📊 Insert response - Error:', error)
+      console.log('📊 Insert response - Error details:', JSON.stringify(error, null, 2))
+      console.log('📊 Insert response - Error message:', error?.message)
+      console.log('📊 Insert response - Error code:', error?.code)
+
+      if (error) {
+        console.error('❌ Submission failed:', error)
+        console.error('❌ Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)))
+        alert('Error submitting decisions: ' + (error.message || JSON.stringify(error)))
+        setLoading(false)
+        return
+      }
+
+      // Insert R&D tests into rnd_tests table for history tracking
+      if (submissionData.rnd_tier) {
+        await supabase.from('rnd_tests').insert({
+          team_id: submissionData.team_id,
+          week_number: submissionData.week_number,
+          tier: submissionData.rnd_tier,
+          success: false, // Will be updated by advance-week
+        })
+      }
+      
+      if (submissionData.rnd_tier_2) {
+        await supabase.from('rnd_tests').insert({
+          team_id: submissionData.team_id,
+          week_number: submissionData.week_number,
+          tier: submissionData.rnd_tier_2,
+          success: false, // Will be updated by advance-week
+        })
+      }
+
+      console.log('✅ Decisions submitted successfully!')
+      console.log('Database response:', data)
+      alert('Decisions submitted successfully!')
+      setShowConfirmation(false)
+      setPrice(99)
+      setRndStrategy(null)
+      setRndRound(0)
+      setRndTier1(null)
+      setRndTier2(null)
+      setFirstTestFailed(false)
+      setAnalyticsPurchased(false)
     } catch (err) {
+      console.error('❌ Exception during submission:', err)
       alert('Error submitting decisions')
     } finally {
       setLoading(false)
@@ -176,42 +323,37 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   return (
     <div className="space-y-10">
       <div className="grid grid-cols-2 gap-6">
-        {/* Product Selection */}
+        {/* Product Display (Assigned by Admin) */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-sm">
           <h3 className="font-['Poppins'] text-xl font-bold text-black mb-1 flex items-center gap-2">
             <span>📦</span>
-            <span>1. Select Product</span>
+            <span>1. Your Product</span>
           </h3>
-          <p className="text-sm text-gray-600 mb-4">Choose your product for this week</p>
-          <div>
-            <label className="block font-['Inter'] font-semibold text-sm text-black mb-2">Product</label>
-            <select
-              value={selectedProduct}
-              onChange={(e) => setSelectedProduct(Number(e.target.value))}
-              className="w-full px-4 py-3.5 border-2 border-gray-300 rounded-xl font-['Inter'] text-[15px] text-black bg-white transition-all focus:outline-none focus:border-[#E63946] focus:shadow-lg focus:shadow-[#E63946]/10 focus:-translate-y-0.5 cursor-pointer"
-            >
-              {PRODUCTS.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} ({product.category})
-                </option>
-              ))}
-            </select>
-            
-            {/* Display selected product info */}
-            <div className="mt-4 p-4 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] rounded-xl border-2 border-gray-200">
+          <p className="text-sm text-gray-600 mb-4">Product assigned by admin</p>
+          
+          {assignedProduct ? (
+            <div className="p-4 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] rounded-xl border-2 border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Selected Product</p>
+                  <p className="text-sm text-gray-600 mb-1">Your Product</p>
                   <p className="font-semibold text-lg text-black">
-                    {PRODUCTS.find(p => p.id === selectedProduct)?.name}
+                    {assignedProduct.name}
                   </p>
                 </div>
-                <span className="text-xs px-3 py-1.5 rounded-lg bg-white text-gray-700 border border-gray-300 font-semibold">
-                  {PRODUCTS.find(p => p.id === selectedProduct)?.category}
-                </span>
+                {assignedProduct.category && (
+                  <span className="text-xs px-3 py-1.5 rounded-lg bg-white text-gray-700 border border-gray-300 font-semibold">
+                    {assignedProduct.category}
+                  </span>
+                )}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 bg-yellow-50 border-2 border-yellow-300 rounded-xl">
+              <p className="text-yellow-800 text-sm">
+                ⚠️ No product assigned yet. Please wait for admin to assign a product.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Price Setting */}
@@ -220,7 +362,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             <span>💰</span>
             <span>2. Set Weekly Price</span>
           </h3>
-          <p className="text-sm text-gray-600 mb-4">Adjust pricing to maximize profit</p>
           <div className="space-y-4">
             <div>
               <label className="block font-['Inter'] font-semibold text-sm text-black mb-2">Price per Unit</label>
@@ -237,13 +378,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 />
               </div>
               <p className="text-xs text-gray-600 mt-1.5">Range: $50 - $200</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] p-5 rounded-2xl border-2 border-gray-200">
-              <p className="text-sm text-gray-600 mb-1">Estimated Demand</p>
-              <p className="text-2xl font-bold text-black">{estimatedDemand.toLocaleString()} units</p>
-              <p className="text-sm text-gray-600 mt-3 mb-1">Estimated Revenue</p>
-              <p className="text-2xl font-bold text-[#E63946]">${estimatedRevenue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -328,7 +462,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               : 'Select your R&D tier'}
           </p>
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
-            {RND_TIERS.map((tier) => {
+            {rndTiers.map((tier) => {
               // Determine if this tier button should be disabled
               let isDisabled = !rndStrategy || rndStrategy === 'skip'
               
@@ -452,18 +586,20 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               </div>
             )}
             
-            <label className="flex items-start p-4 border-2 border-gray-200 rounded-xl cursor-pointer transition-all hover:bg-[#FFF5F5] hover:border-[#E63946] hover:shadow-md">
-              <input
-                type="checkbox"
-                checked={analyticsPurchased}
-                onChange={(e) => setAnalyticsPurchased(e.target.checked)}
-                className="mt-1 mr-3 w-[18px] h-[18px] accent-[#E63946] cursor-pointer"
-              />
-              <div>
-                <span className="font-semibold text-[15px] block">Purchase Analytics Tools</span>
-                <span className="text-sm text-gray-600">Cost: ฿2,000</span>
+            <div className="p-4 border-2 border-gray-200 rounded-xl transition-all">
+              <label className="font-semibold text-[15px] block mb-3 text-gray-800">Analytics Tools: <span className="text-[#E63946]">{analyticsQuantity}</span> units</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min="0"
+                  value={analyticsQuantity}
+                  onChange={(e) => setAnalyticsQuantity(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20"
+                  placeholder="Enter quantity"
+                />
+                <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Cost: ฿{(2000 * analyticsQuantity).toLocaleString()}</span>
               </div>
-            </label>
+            </div>
 
             <div className="bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] p-6 rounded-2xl border-2 border-gray-200">
               <h4 className="font-['Poppins'] font-bold text-base text-black mb-4">Cost Summary</h4>
@@ -494,10 +630,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   <span>Total Costs:</span>
                   <span>฿{totalCosts.toLocaleString()}</span>
                 </div>
-                <div className="border-t-2 border-gray-200 pt-3 flex justify-between font-bold text-lg text-[#E63946]">
-                  <span>Est. Profit:</span>
-                  <span>฿{(estimatedRevenue - totalCosts).toLocaleString()}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -523,8 +655,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             <div className="p-6">
               <div className="space-y-5">
                 <div className="pb-5 border-b border-gray-200">
-                  <div className="font-['Poppins'] font-bold text-base text-black mb-2">Product Selection</div>
-                  <div className="text-sm text-gray-600">{PRODUCTS.find((p) => p.id === selectedProduct)?.name}</div>
+                  <div className="font-['Poppins'] font-bold text-base text-black mb-2">Product</div>
+                  <div className="text-sm text-gray-600">{assignedProduct?.name || 'Not assigned'}</div>
                 </div>
                 <div className="pb-5 border-b border-gray-200">
                   <div className="font-['Poppins'] font-bold text-base text-black mb-2">Price</div>
@@ -540,7 +672,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   <div className="pb-5 border-b border-gray-200">
                     <div className="font-['Poppins'] font-bold text-base text-black mb-2">R&D Test 1</div>
                     <div className="text-sm text-gray-600">
-                      {RND_TIERS.find((t) => t.tier === rndTier1)?.label}
+                      {rndTiers.find((t) => t.tier === rndTier1)?.label}
                     </div>
                   </div>
                 )}
@@ -548,7 +680,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   <div className="pb-5 border-b border-gray-200">
                     <div className="font-['Poppins'] font-bold text-base text-black mb-2">R&D Test 2</div>
                     <div className="text-sm text-gray-600">
-                      {RND_TIERS.find((t) => t.tier === rndTier2)?.label}
+                      {rndTiers.find((t) => t.tier === rndTier2)?.label}
                     </div>
                   </div>
                 )}

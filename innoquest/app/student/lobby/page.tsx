@@ -29,54 +29,57 @@ export default function StudentLobby() {
 
     setTeamName(storedTeamName || 'Player')
 
-    // Heartbeat: Update presence every 10 seconds
-    const heartbeat = setInterval(async () => {
-      await supabase
-        .from('teams')
-        .update({ 
-          last_activity: new Date().toISOString(),
-          is_active: true 
-        })
-        .eq('id', storedTeamId)
-    }, 10000)
-
-    // Poll for updates every 1 second for immediate game start detection
-    const pollInterval = setInterval(async () => {
-      const gameId = sessionStorage.getItem('game_id')
-      if (!gameId) return
-
-      console.log(`[Poll] Checking game status...`)
-
-      const { data: settings } = await supabase
-        .from('game_settings')
-        .select('game_status, current_week')
-        .eq('game_id', gameId)
-        .single()
-
-      console.log(`[Poll] Status: ${settings?.game_status}`)
-
-      if (settings && settings.game_status === 'active') {
-        console.log('🎮 GAME STARTED! Redirecting...')
-        window.location.href = '/student/gameplay'
-      } else {
-        // Load players only if not redirecting
-        const { data: teams } = await supabase
-          .from('teams')
-          .select('id, team_name, last_activity, is_active')
-          .eq('game_id', gameId)
-          .order('team_name')
-
-        if (teams) {
-          const playerStatuses: PlayerStatus[] = teams.map(team => ({
-            id: team.id,
-            team_name: team.team_name,
-            is_online: team.last_activity !== null,
-            last_activity: team.last_activity
-          }))
-          setPlayers(playerStatuses)
+    // Subscribe to game_settings changes
+    const gameSettingsChannel = supabase
+      .channel('game_settings_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_settings',
+          filter: `game_id=eq.${storedGameId}`
+        },
+        (payload) => {
+          console.log('Game settings changed:', payload)
+          if (payload.new.game_status === 'active') {
+            console.log('🎮 GAME STARTED! Redirecting...')
+            window.location.href = '/student/gameplay'
+          }
         }
-      }
-    }, 1000)
+      )
+      .subscribe()
+
+    // Subscribe to teams changes
+    const teamsChannel = supabase
+      .channel('teams_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'teams',
+          filter: `game_id=eq.${storedGameId}`
+        },
+        async () => {
+          const { data: teams } = await supabase
+            .from('teams')
+            .select('team_id, team_name, last_activity, is_active')
+            .eq('game_id', storedGameId)
+            .order('team_name')
+
+          if (teams) {
+            const playerStatuses: PlayerStatus[] = teams.map(team => ({
+              id: team.team_id,
+              team_name: team.team_name,
+              is_online: team.last_activity !== null,
+              last_activity: team.last_activity
+            }))
+            setPlayers(playerStatuses)
+          }
+        }
+      )
+      .subscribe()
 
     // Initial load
     const init = async () => {
@@ -96,13 +99,13 @@ export default function StudentLobby() {
 
       const { data: teams } = await supabase
         .from('teams')
-        .select('id, team_name, last_activity, is_active')
+        .select('team_id, team_name, last_activity, is_active')
         .eq('game_id', gameId)
         .order('team_name')
 
       if (teams) {
         const playerStatuses: PlayerStatus[] = teams.map(team => ({
-          id: team.id,
+          id: team.team_id,
           team_name: team.team_name,
           is_online: team.last_activity !== null,
           last_activity: team.last_activity
@@ -113,8 +116,8 @@ export default function StudentLobby() {
     init()
 
     return () => {
-      clearInterval(heartbeat)
-      clearInterval(pollInterval)
+      supabase.removeChannel(gameSettingsChannel)
+      supabase.removeChannel(teamsChannel)
     }
   }, [])
 

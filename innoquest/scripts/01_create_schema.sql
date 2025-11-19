@@ -22,7 +22,7 @@ CREATE TABLE products (
   description TEXT,
   category TEXT,
   base_price DECIMAL(10,2),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP  
 );
 
 -- Create teams table
@@ -45,7 +45,7 @@ CREATE TABLE teams (
 -- Create weekly_results table
 CREATE TABLE weekly_results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  teams_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   game_id UUID NOT NULL,
   week_number INTEGER NOT NULL,
   set_price DECIMAL(10,2),
@@ -66,7 +66,7 @@ CREATE TABLE weekly_results (
 -- Create rnd_tests table
 CREATE TABLE rnd_tests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  teams_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   week_number INTEGER NOT NULL,
   tier TEXT NOT NULL,
   success BOOLEAN NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE rnd_tests (
 -- Create analytics_purchases table
 CREATE TABLE analytics_purchases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  teams_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   week_number INTEGER NOT NULL,
   tool_type TEXT NOT NULL,
   cost DECIMAL(10,2) NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE game_settings (
 CREATE TABLE game_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL,
-  team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  teams_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   action TEXT NOT NULL,
   details JSONB,
   result JSONB,
@@ -144,8 +144,8 @@ CREATE POLICY "Game logs readable by authenticated users" ON game_logs FOR SELEC
 
 -- Create indexes for performance
 CREATE INDEX idx_teams_game_id ON teams(game_id);
-CREATE INDEX idx_weekly_results_team_id ON weekly_results(team_id);
+CREATE INDEX idx_weekly_results_teams_id ON weekly_results(teams_id);
 CREATE INDEX idx_weekly_results_game_id ON weekly_results(game_id);
-CREATE INDEX idx_rnd_tests_team_id ON rnd_tests(team_id);
+CREATE INDEX idx_rnd_tests_teams_id ON rnd_tests(teams_id);
 CREATE INDEX idx_game_logs_game_id ON game_logs(game_id);
-CREATE INDEX idx_game_logs_team_id ON game_logs(team_id);
+CREATE INDEX idx_game_logs_teams_id ON game_logs(teams_id);

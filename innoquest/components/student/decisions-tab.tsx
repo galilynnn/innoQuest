@@ -124,7 +124,6 @@ export default function DecisionsTab({ teamId }: DecisionsTabProps) {
             <h3 className="font-semibold text-gray-900">Price Impact</h3>
             <div className="space-y-2 text-sm">
               <p className="text-gray-700">Current Price: <span className="font-bold">${price}</span></p>
-              <p className="text-gray-700">Estimated Demand: <span className="font-bold">~2,450 units</span></p>
               <p className="text-gray-700">Revenue: <span className="font-bold text-green-600">${(price * 2450).toLocaleString()}</span></p>
             </div>
           </div>

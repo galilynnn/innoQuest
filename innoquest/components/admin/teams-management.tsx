@@ -12,6 +12,7 @@ interface TeamSlot {
   exists: boolean
   lastActivity: string | null
   isActive: boolean
+  assignedProduct: string | null
 }
 
 interface TeamsManagementProps {
@@ -21,22 +22,37 @@ interface TeamsManagementProps {
 export default function TeamsManagement({ gameId }: TeamsManagementProps) {
   const supabase = createClient()
   const [maxTeams, setMaxTeams] = useState(10)
+  const [initialCapital, setInitialCapital] = useState(500000)
   const [teamSlots, setTeamSlots] = useState<TeamSlot[]>([])
   const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
 
   useEffect(() => {
+    loadProducts()
     loadTeamsAndSettings()
   }, [gameId])
 
+  const loadProducts = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, name')
+      .order('name')
+    
+    if (data && !error) {
+      setProducts(data)
+    }
+  }
+
   const loadTeamsAndSettings = async () => {
-    // Load game settings for max teams
+    // Load game settings for max teams and initial capital
     const { data: settings } = await supabase
       .from('game_settings')
-      .select('max_teams')
+      .select('max_teams, initial_capital')
       .eq('game_id', gameId)
       .single()
 
     const maxTeamsCount = settings?.max_teams || 10
+    const initialCapitalValue = settings?.initial_capital || 500000
     
     // Validate max teams is between 1 and 10
     if (maxTeamsCount > 10) {
@@ -46,11 +62,12 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
     }
     
     setMaxTeams(maxTeamsCount)
+    setInitialCapital(initialCapitalValue)
 
     // Load existing teams with last_activity to check online status
     const { data: teams } = await supabase
       .from('teams')
-      .select('id, username, password_hash, last_activity, is_active')
+      .select('team_id, username, password_hash, last_activity, is_active, assigned_product_id')
       .eq('game_id', gameId)
       .order('created_at', { ascending: true })
 
@@ -59,7 +76,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
     for (let i = 0; i < maxTeamsCount; i++) {
       if (teams && teams[i]) {
         slots.push({
-          id: teams[i].id,
+          id: teams[i].team_id,
           slotNumber: i + 1,
           username: teams[i].username,
           password: teams[i].password_hash,
@@ -67,6 +84,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           exists: true,
           lastActivity: teams[i].last_activity,
           isActive: teams[i].is_active,
+          assignedProduct: teams[i].assigned_product_id,
         })
       } else {
         slots.push({
@@ -78,6 +96,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           exists: false,
           lastActivity: null,
           isActive: false,
+          assignedProduct: null,
         })
       }
     }
@@ -108,7 +127,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           username: slot.username,
           password_hash: slot.password,
         })
-        .eq('id', slot.id)
+        .eq('team_id', slot.id)
 
       if (error) {
         alert('Error updating team: ' + error.message)
@@ -123,13 +142,14 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
           team_name: `Team ${slot.slotNumber}`,
           username: slot.username,
           password_hash: slot.password,
-          total_balance: 100000,
+          total_balance: initialCapital,
           successful_rnd_tests: 0,
           funding_stage: 'Pre-Seed',
           is_active: true,
           last_activity: null, // Set to null so team shows as "Not Joined" until they log in
+          assigned_product_id: slot.assignedProduct, // Include assigned product
         })
-        .select('id')
+        .select('team_id')
         .single()
 
       if (error) {
@@ -138,7 +158,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
         return
       }
 
-      slot.id = data.id
+      slot.id = data.team_id
       slot.exists = true
     }
 
@@ -160,6 +180,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
         exists: false,
         lastActivity: null,
         isActive: false,
+        assignedProduct: null,
       }
       setTeamSlots(newSlots)
     } else {
@@ -174,6 +195,33 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
   const handleInputChange = (index: number, field: 'username' | 'password', value: string) => {
     const newSlots = [...teamSlots]
     newSlots[index][field] = value
+    setTeamSlots(newSlots)
+  }
+
+  const handleProductChange = async (index: number, productId: string | null) => {
+    const slot = teamSlots[index]
+    
+    // If in edit mode (creating new team), just update the local state
+    if (slot.isEditing || !slot.exists || !slot.id) {
+      const newSlots = [...teamSlots]
+      newSlots[index].assignedProduct = productId
+      setTeamSlots(newSlots)
+      return
+    }
+
+    // If team exists, update the database
+    const { error } = await supabase
+      .from('teams')
+      .update({ assigned_product_id: productId })
+      .eq('team_id', slot.id)
+
+    if (error) {
+      alert('Error assigning product: ' + error.message)
+      return
+    }
+
+    const newSlots = [...teamSlots]
+    newSlots[index].assignedProduct = productId
     setTeamSlots(newSlots)
   }
 
@@ -195,6 +243,7 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
               <th className="text-left py-3 px-4 font-semibold text-gray-900">ID</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-900">Username</th>
               <th className="text-left py-3 px-4 font-semibold text-gray-900">Password</th>
+              <th className="text-left py-3 px-4 font-semibold text-gray-900">Assigned Product</th>
               <th className="text-center py-3 px-4 font-semibold text-gray-900">Status</th>
               <th className="text-center py-3 px-4 font-semibold text-gray-900">Edit/Confirm</th>
             </tr>
@@ -234,6 +283,21 @@ export default function TeamsManagement({ gameId }: TeamsManagementProps) {
                       {slot.password || <span className="text-gray-400">Not set</span>}
                     </span>
                   )}
+                </td>
+                <td className="py-3 px-4">
+                  <select
+                    value={slot.assignedProduct || ''}
+                    onChange={(e) => handleProductChange(index, e.target.value || null)}
+                    disabled={!slot.isEditing && !slot.exists}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] bg-white disabled:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">Not Assigned</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="py-3 px-4 text-center">
                   {slot.exists ? (

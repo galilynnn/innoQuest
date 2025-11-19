@@ -6,11 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import AdminHeader from '@/components/admin/admin-header'
 import GameConfiguration from '@/components/admin/game-configuration'
 import TeamsManagement from '@/components/admin/teams-management'
-import GameMonitoring from '@/components/admin/game-monitoring'
 import CustomerDataManagement from '@/components/admin/customer-data-management'
 import ExportReports from '@/components/admin/export-reports'
+import Link from "next/link";
 
-type TabType = 'config' | 'teams' | 'monitoring' | 'customers' | 'reports'
+type TabType = 'config' | 'teams' | 'customers' | 'reports'
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -43,13 +43,20 @@ export default function AdminDashboard() {
       <AdminHeader onLogout={handleLogout} />
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-4xl font-serif font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Manage game configuration, teams, and monitor gameplay</p>
+        <div className="mb-8 flex justify-between items-center">
+          <div>
+            <h1 className="text-4xl font-serif font-bold mb-2">Admin Dashboard</h1>
+            <p className="text-muted-foreground">Manage game configuration, teams, and monitor gameplay</p>
+          </div>
+          <Link href="/admin/lobby">
+            <button className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">
+              Go to Gameplay Control
+            </button>
+          </Link>
         </div>
 
         <div className="flex border-b border-border mb-8 overflow-x-auto">
-          {(['config', 'teams', 'monitoring', 'customers', 'reports'] as const).map((tab) => (
+          {(['config', 'teams', 'customers', 'reports'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -61,7 +68,6 @@ export default function AdminDashboard() {
             >
               {tab === 'config' && 'Game Configuration'}
               {tab === 'teams' && 'Teams & Credentials'}
-              {tab === 'monitoring' && 'Live Monitoring'}
               {tab === 'customers' && 'Customer Data'}
               {tab === 'reports' && 'Export Reports'}
             </button>
@@ -71,7 +77,6 @@ export default function AdminDashboard() {
         <div className="space-y-6">
           {activeTab === 'config' && <GameConfiguration gameId={gameId} />}
           {activeTab === 'teams' && <TeamsManagement gameId={gameId} />}
-          {activeTab === 'monitoring' && <GameMonitoring gameId={gameId} />}
           {activeTab === 'customers' && <CustomerDataManagement gameId={gameId} />}
           {activeTab === 'reports' && <ExportReports gameId={gameId} />}
         </div>

@@ -37,8 +37,7 @@ export default function ReportsTab({ teamId }: ReportsTabProps) {
   }
 
   const latestResult = team.history[team.history.length - 1]
-  const totalRevenue = team.history.reduce((sum, r) => sum + r.revenue, 0)
-  const totalProfit = team.history.reduce((sum, r) => sum + r.profit, 0)
+  const totalRevenue = team.history.reduce((sum, r) => sum + (r.revenue || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -49,15 +48,8 @@ export default function ReportsTab({ teamId }: ReportsTabProps) {
         <div className="grid grid-cols-2 gap-6">
           <div className="bg-blue-50 p-6 rounded-lg">
             <p className="text-gray-700 text-sm mb-1">Weekly Revenue</p>
-            <p className="text-3xl font-bold text-blue-600">฿{latestResult.revenue.toLocaleString()}</p>
-            <p className="text-sm text-gray-600 mt-2">Units Sold: {latestResult.unitsSold}</p>
-          </div>
-          <div className="bg-green-50 p-6 rounded-lg">
-            <p className="text-gray-700 text-sm mb-1">Weekly Profit</p>
-            <p className={`text-3xl font-bold ${latestResult.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              ฿{latestResult.profit.toLocaleString()}
-            </p>
-            <p className="text-sm text-gray-600 mt-2">Margin: {((latestResult.profit / latestResult.revenue) * 100).toFixed(1)}%</p>
+            <p className="text-3xl font-bold text-blue-600">฿{(latestResult.revenue || 0).toLocaleString()}</p>
+            <p className="text-sm text-gray-600 mt-2">Units Sold: {latestResult.unitsSold || 0}</p>
           </div>
         </div>
       </Card>
@@ -77,14 +69,6 @@ export default function ReportsTab({ teamId }: ReportsTabProps) {
               <tr className="border-b border-border">
                 <td className="py-2 text-gray-600">Total Revenue (All Weeks)</td>
                 <td className="py-2 text-right font-semibold text-gray-900">฿{totalRevenue.toLocaleString()}</td>
-              </tr>
-              <tr className="border-b border-border">
-                <td className="py-2 text-gray-600">Total Profit (All Weeks)</td>
-                <td className="py-2 text-right font-semibold text-gray-900">฿{totalProfit.toLocaleString()}</td>
-              </tr>
-              <tr className="border-b border-border">
-                <td className="py-2 text-gray-600">Average Weekly Profit</td>
-                <td className="py-2 text-right font-semibold text-gray-900">฿{(totalProfit / team.history.length).toLocaleString()}</td>
               </tr>
               <tr className="font-semibold text-primary">
                 <td className="py-2">Current Cash Reserve</td>

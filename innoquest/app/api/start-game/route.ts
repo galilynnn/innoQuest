@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if game is in lobby state
-    if (settings.game_status !== 'lobby') {
+    // Check if game is in lobby/setup state (allow both for compatibility)
+    if (settings.game_status !== 'lobby' && settings.game_status !== 'setup') {
       return NextResponse.json(
         { error: `Game is already ${settings.game_status}` },
         { status: 400 }
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Get active teams count
     const { data: teams, error: teamsError } = await supabase
       .from('teams')
-      .select('id, is_active, last_activity')
+      .select('team_id, is_active, last_activity')
       .eq('game_id', gameId)
 
     if (teamsError) {
@@ -61,12 +61,13 @@ export async function POST(request: NextRequest) {
 
     console.log('Starting game with', loggedInTeams.length, 'players')
 
-    // Start the game: set status to 'active' and week to 1
+    // Start the game: set status to 'active' (or 'playing' for new schema) and week to 1
     const { error: updateError } = await supabase
       .from('game_settings')
       .update({
         game_status: 'active',
         current_week: 1,
+        week_start_time: new Date().toISOString(), // Set initial week start time for countdown
         updated_at: new Date().toISOString()
       })
       .eq('game_id', gameId)

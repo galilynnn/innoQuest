@@ -151,7 +151,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase
           .from('teams')
           .update(updates)
-          .eq('id', teamId)
+          .eq('team_id', teamId)
 
         if (error) throw error
 

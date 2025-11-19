@@ -5,15 +5,22 @@ import { createClient } from '@/lib/supabase/client'
 
 interface Customer {
   id: string
-  customer_id: string
+  job: string
+  gender: string
   monthly_income: number
+  income_segment: string
   monthly_food_spending: number
-  working_hours: number
+  spending_segment: string
+  working_hours_per_week: number
+  dietary_preference: string
   health_consciousness: number
-  experimental_food_interest: number
+  health_segment: string
+  interest_in_experimental_food: number
+  experimental_segment: string
   sustainability_preference: number
+  sustainability_segment: string
   brand_loyalty: number
-  probability: number
+  loyalty_segment: number
 }
 
 interface CustomerDataManagementProps {
@@ -42,7 +49,7 @@ export default function CustomerDataManagement({ gameId }: CustomerDataManagemen
   }, [])
 
   const loadCustomers = async () => {
-    const { data } = await supabase.from('customers').select('*').limit(50)
+    const { data } = await supabase.from('customers_data').select('*').limit(50)
 
     if (data) {
       setCustomers(data)
@@ -102,7 +109,7 @@ export default function CustomerDataManagement({ gameId }: CustomerDataManagemen
           <form onSubmit={handleAddCustomer} className="grid grid-cols-3 gap-4">
             <input
               type="text"
-              placeholder="Customer ID"
+              placeholder="Customer id"
               value={formData.customer_id}
               onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
               className="px-4 py-2 border border-border rounded-lg bg-input"
@@ -146,35 +153,50 @@ export default function CustomerDataManagement({ gameId }: CustomerDataManagemen
       )}
 
       <div className="bg-card border border-border rounded-lg p-6 overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-auto">
           <thead className="border-b border-border">
             <tr className="text-muted-foreground">
-              <th className="text-left py-2">ID</th>
-              <th className="text-right py-2">Income</th>
-              <th className="text-right py-2">Food Spending</th>
-              <th className="text-right py-2">Health</th>
-              <th className="text-right py-2">R&D Interest</th>
-              <th className="text-right py-2">Probability</th>
-              <th className="text-center py-2">Actions</th>
+              <th className="text-center py-2">ID</th>
+              <th className="text-center py-2">Name</th>
+              <th className="text-center py-2">Gender</th>
+              <th className="text-center py-2">Job</th>
+              <th className="text-center py-2">Monthly Income</th>
+              <th className="text-center py-2">Income Segment</th>
+              <th className="text-center py-2">Monthly Food Spending</th>
+              <th className="text-center py-2">Spending Segment</th>
+              <th className="text-center py-2">Working Hours/Week</th>
+              <th className="text-center py-2">Dietary Preference</th>
+              <th className="text-center py-2">Health Consciousness</th>
+              <th className="text-center py-2">Health Segment</th>
+              <th className="text-center py-2">Interest in Experimental Food</th>
+              <th className="text-center py-2">Experimental Segment</th>
+              <th className="text-center py-2">Sustainability Preference</th>
+              <th className="text-center py-2">Sustainability Segment</th>
+              <th className="text-center py-2">Brand Loyalty</th>
+              <th className="text-center py-2">Loyalty Segment</th>
             </tr>
           </thead>
           <tbody>
             {customers.map((customer) => (
               <tr key={customer.id} className="border-b border-border hover:bg-secondary/50">
-                <td className="py-3">{customer.customer_id}</td>
-                <td className="text-right">${customer.monthly_income}</td>
-                <td className="text-right">${customer.monthly_food_spending}</td>
-                <td className="text-right">{customer.health_consciousness}/10</td>
-                <td className="text-right">{customer.experimental_food_interest}/10</td>
-                <td className="text-right">{(customer.probability * 100).toFixed(0)}%</td>
-                <td className="text-center">
-                  <button
-                    onClick={() => handleDeleteCustomer(customer.id)}
-                    className="text-destructive hover:bg-destructive/10 px-2 py-1 rounded transition-colors"
-                  >
-                    Delete
-                  </button>
-                </td>
+                <td className="text-center py-3">{customer.customer_id}</td>
+                <td className="text-center py-3">{customer.name}</td>
+                <td className="text-center py-3">{customer.gender}</td>
+                <td className="text-center py-3">{customer.job}</td>
+                <td className="text-center py-3">${customer.monthly_income}</td>
+                <td className="text-center py-3">{customer.income_segment}</td>
+                <td className="text-center py-3">${customer.monthly_food_spending}</td>
+                <td className="text-center py-3">{customer.spending_segment}</td>
+                <td className="text-center py-3">{customer.working_hours_per_week}</td>
+                <td className="text-center py-3">{customer.dietary_preference}</td>
+                <td className="text-center py-3">{customer.health_consciousness}/10</td>
+                <td className="text-center py-3">{customer.health_segment}</td>
+                <td className="text-center py-3">{customer.interest_in_experimental_food}/10</td>
+                <td className="text-center py-3">{customer.experimental_segment}</td>
+                <td className="text-center py-3">{customer.sustainability_preference}/10</td>
+                <td className="text-center py-3">{customer.sustainability_segment}</td>
+                <td className="text-center py-3">{customer.brand_loyalty}/10</td>
+                <td className="text-center py-3">{customer.loyalty_segment}</td>
               </tr>
             ))}
           </tbody>

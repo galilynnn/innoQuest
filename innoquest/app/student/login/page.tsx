@@ -22,7 +22,7 @@ export default function StudentLoginPage() {
       // Query teams table to find matching username AND password
       const { data: team, error: teamError } = await supabase
         .from('teams')
-        .select('id, team_name, game_id, username, password_hash')
+        .select('team_id, team_name, game_id, username, password_hash')
         .eq('username', username)
         .eq('password_hash', password)
         .single()
@@ -40,13 +40,13 @@ export default function StudentLoginPage() {
           last_activity: new Date().toISOString(),
           is_active: true 
         })
-        .eq('id', team.id)
+        .eq('team_id', team.team_id)
 
       // Login successful - show welcome message
       alert(`Hello ${team.team_name}! Welcome to InnoQuest.`)
 
       // Create session by storing team info
-      sessionStorage.setItem('team_id', team.id)
+      sessionStorage.setItem('teams_id', team.team_id)
       sessionStorage.setItem('team_name', team.team_name)
       sessionStorage.setItem('game_id', team.game_id)
 

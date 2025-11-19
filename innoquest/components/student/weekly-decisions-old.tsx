@@ -48,9 +48,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [loading, setLoading] = useState(false)
 
-  // Calculate estimated revenue
-  const estimatedDemand = Math.round(3000 * (price / 99) * 0.8)
-  const estimatedRevenue = estimatedDemand * price
   const rdCost = rndTier ? RND_TIERS.find((t) => t.tier === rndTier)?.cost || 0 : 0
   const analyticsCost = analyticsPurchased ? 2000 : 0
   const totalCosts = 20000 + rdCost + analyticsCost
@@ -62,10 +59,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         team_id: team.id,
         week_number: gameSettings.current_week,
         set_price: price,
-        demand: estimatedDemand,
-        revenue: estimatedRevenue,
+
         costs: totalCosts,
-        profit: estimatedRevenue - totalCosts,
         rnd_tier: rndTier,
         analytics_purchased: analyticsPurchased,
         pass_fail_status: 'pending',

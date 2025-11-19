@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface Team {
-  id: string
+  team_id: string
   team_name: string
   total_balance: number
   successful_rnd_tests: number
   funding_stage: string
   is_active: boolean
+  bonus_multiplier_pending: number | null
 }
 
 interface WeeklyResult {
@@ -34,40 +35,100 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
 
   useEffect(() => {
     loadTeams()
+    // Removed auto-polling to prevent API overload
   }, [gameId])
 
   const loadTeams = async () => {
-    const { data, error } = await supabase
-      .from('teams')
-      .select('*')
-      .eq('game_id', gameId)
-      .order('total_balance', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('teams')
+        .select('team_id, team_name, total_balance, successful_rnd_tests, funding_stage, is_active, bonus_multiplier_pending')
+        .eq('game_id', gameId)
+        .order('total_balance', { ascending: false })
 
-    if (data) {
-      setTeams(data)
-      if (data.length > 0) {
-        setSelectedTeam(data[0])
-        loadWeeklyResults(data[0].id)
+      if (data) {
+        setTeams(data as Team[])
+        if (data.length > 0 && !selectedTeam) {
+          setSelectedTeam(data[0] as Team)
+          loadWeeklyResults((data[0] as any).team_id)
+        }
       }
+      
+      if (error) {
+        console.error('Error loading teams:', error)
+      }
+    } catch (error) {
+      console.error('Exception loading teams:', error)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const loadWeeklyResults = async (teamId: string) => {
-    const { data } = await supabase
-      .from('weekly_results')
-      .select('*')
-      .eq('team_id', teamId)
-      .order('week_number', { ascending: true })
+    try {
+      const { data } = await supabase
+        .from('weekly_results')
+        .select('*')
+        .eq('team_id', teamId)
+        .order('week_number', { ascending: true })
 
-    if (data) {
-      setWeeklyResults(data)
+      if (data) {
+        setWeeklyResults(data)
+      }
+    } catch (error) {
+      console.error('Error loading weekly results:', error)
     }
   }
 
   const handleSelectTeam = (team: Team) => {
     setSelectedTeam(team)
-    loadWeeklyResults(team.id)
+    loadWeeklyResults(team.team_id)
+  }
+
+  const handleBonusToggle = async (teamId: string, currentBonus: number | null, currentStage: string) => {
+    try {
+      let newValue = null
+      
+      if (currentBonus === null) {
+        // Fetch the bonus multiplier from game_settings investment_config based on funding stage
+        const { data: gameSettings, error: configError } = await supabase
+          .from('game_settings')
+          .select('investment_config')
+          .eq('game_id', gameId)
+          .single()
+        
+        if (configError || !gameSettings) {
+          console.error('Error fetching game settings:', configError)
+          alert('Failed to fetch bonus multiplier configuration')
+          return
+        }
+        
+        // Convert funding stage to match JSON keys (e.g., "Seed" -> "seed", "Series A" -> "series_a")
+        const stageKey = currentStage.toLowerCase().replace(/\s+/g, '_')
+        const investmentConfig = gameSettings.investment_config as any
+        const stageConfig = investmentConfig[stageKey]
+        
+        if (!stageConfig || !stageConfig.bonus_multiplier) {
+          console.error('No config found for stage:', stageKey)
+          alert('No bonus multiplier configured for ' + currentStage)
+          return
+        }
+        
+        newValue = stageConfig.bonus_multiplier
+      }
+      
+      const { error } = await supabase
+        .from('teams')
+        .update({ bonus_multiplier_pending: newValue })
+        .eq('team_id', teamId)
+      
+      if (error) throw error
+      
+      await loadTeams()
+    } catch (error) {
+      console.error('Error updating bonus:', error)
+      alert('Failed to update bonus multiplier')
+    }
   }
 
   if (loading) {
@@ -81,10 +142,10 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
         <div className="space-y-2">
           {teams.map((team, idx) => (
             <button
-              key={team.id}
+              key={team.team_id}
               onClick={() => handleSelectTeam(team)}
-              className={`w-full p-4 text-left rounded-lg border transition-colors ${
-                selectedTeam?.id === team.id
+              className={`w-full p-4 text-center rounded-lg border transition-colors ${
+                selectedTeam?.team_id === team.team_id
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card border-border hover:bg-secondary'
               }`}
@@ -94,9 +155,33 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                 <span className="text-sm opacity-75">{team.funding_stage}</span>
               </div>
               <p className="font-semibold">{team.team_name}</p>
-              <p className={`text-sm ${selectedTeam?.id === team.id ? 'opacity-90' : 'text-muted-foreground'}`}>
+              <p className={`text-sm ${selectedTeam?.team_id === team.team_id ? 'opacity-90' : 'text-muted-foreground'}`}>
                 ${team.total_balance.toLocaleString()}
               </p>
+              <div className="mt-2 pt-2 border-t border-border/50">
+                <label 
+                  className="flex items-center gap-2 cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleBonusToggle(team.team_id, team.bonus_multiplier_pending, team.funding_stage)
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={team.bonus_multiplier_pending !== null}
+                    onChange={() => {}}
+                    className="w-4 h-4 rounded border-gray-300 cursor-pointer"
+                  />
+                  <span className="text-xs font-medium">
+                    Grant Bonus ({team.funding_stage})
+                  </span>
+                  {team.bonus_multiplier_pending !== null && (
+                    <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded ml-auto">
+                      {team.bonus_multiplier_pending}×
+                    </span>
+                  )}
+                </label>
+              </div>
             </button>
           ))}
         </div>
@@ -129,10 +214,10 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                 <table className="w-full text-sm">
                   <thead className="border-b border-border">
                     <tr className="text-muted-foreground">
-                      <th className="text-left py-2">Week</th>
-                      <th className="text-right py-2">Revenue</th>
-                      <th className="text-right py-2">Profit</th>
-                      <th className="text-left py-2">Status</th>
+                      <th className="text-center py-2">Week</th>
+                      <th className="text-center py-2">Revenue</th>
+                      <th className="text-center py-2">Profit</th>
+                      <th className="text-center py-2">Status</th>
                     </tr>
                   </thead>
                   <tbody className="space-y-2">
@@ -146,9 +231,9 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                       weeklyResults.map((result) => (
                         <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
                           <td className="py-3">Week {result.week_number}</td>
-                          <td className="text-right">${result.revenue.toLocaleString()}</td>
-                          <td className={`text-right font-semibold ${result.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${result.profit.toLocaleString()}
+                          <td className="text-right">${(result.revenue || 0).toLocaleString()}</td>
+                          <td className={`text-right font-semibold ${(result.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            ${(result.profit || 0).toLocaleString()}
                           </td>
                           <td>
                             <span

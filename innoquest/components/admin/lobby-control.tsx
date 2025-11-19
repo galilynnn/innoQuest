@@ -26,10 +26,28 @@ export default function LobbyControl() {
 
   useEffect(() => {
     loadData()
+    
+    // Set up real-time subscription for team changes
+    const channel = supabase
+      .channel('teams_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'teams',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Team update received:', payload)
+          loadData()
+        }
+      )
+      .subscribe()
 
-    // Poll every 3 seconds
-    const interval = setInterval(loadData, 3000)
-    return () => clearInterval(interval)
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const loadData = async () => {
@@ -47,14 +65,14 @@ export default function LobbyControl() {
     // Load all players
     const { data: teams } = await supabase
       .from('teams')
-      .select('id, team_name, last_activity, is_active')
+      .select('team_id, team_name, last_activity, is_active')
       .eq('game_id', gameId)
       .order('team_name')
 
     if (teams) {
       // Show as online if they have logged in (has last_activity)
       const playerStatuses: PlayerStatus[] = teams.map(team => ({
-        id: team.id,
+        id: team.team_id,
         team_name: team.team_name,
         is_online: team.last_activity !== null,
         last_activity: team.last_activity
@@ -222,15 +240,24 @@ export default function LobbyControl() {
 
       {/* Players List */}
       <div className="bg-white rounded-3xl shadow-xl p-8">
-        <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
-          <svg className="w-8 h-8 text-[#E63946]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-          Players in Lobby
-          <span className="ml-auto text-lg text-gray-600">
-            {onlineCount} / {players.length} Online
-          </span>
-        </h3>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
+            <svg className="w-8 h-8 text-[#E63946]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Players in Lobby
+            <span className="ml-auto text-lg text-gray-600">
+              {onlineCount} / {players.length} Online
+            </span>
+          </h3>
+          <button
+            onClick={loadData}
+            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg text-sm font-semibold transition-all"
+            title="Refresh player list"
+          >
+            🔄 Refresh
+          </button>
+        </div>
 
         <div className="grid gap-3">
           {players.map((player, index) => (

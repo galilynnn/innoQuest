@@ -13,6 +13,8 @@ interface TeamData {
   team_name: string
   game_id: string
   selected_product_id?: string
+  assigned_product_id?: string
+  assigned_product_name?: string | null
   total_balance: number
   successful_rnd_tests: number
   funding_stage: string
@@ -23,6 +25,10 @@ interface GameSettings {
   current_week: number
   total_weeks: number
   game_status: string
+  cost_per_analytics?: number
+  rnd_tier_config?: any
+  week_duration_minutes?: number
+  week_start_time?: string
 }
 
 export default function StudentGameplay() {
@@ -31,11 +37,13 @@ export default function StudentGameplay() {
   const [team, setTeam] = useState<TeamData | null>(null)
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [timeRemaining, setTimeRemaining] = useState<number>(0)
 
+  // Load initial data once
   useEffect(() => {
     const loadData = async () => {
       // Get team ID from session
-      const teamId = sessionStorage.getItem('team_id')
+      const teamId = sessionStorage.getItem('teams_id')
       const teamName = sessionStorage.getItem('team_name')
       const gameId = sessionStorage.getItem('game_id')
 
@@ -48,12 +56,32 @@ export default function StudentGameplay() {
       // Load team data from database
       const { data: teamData } = await supabase
         .from('teams')
-        .select('*')
-        .eq('id', teamId)
+        .select('team_id, team_name, game_id, assigned_product_id, total_balance, successful_rnd_tests, funding_stage')
+        .eq('team_id', teamId)
         .single()
 
       if (teamData) {
-        setTeam(teamData)
+        // If there's an assigned product, fetch its name
+        let productName = null
+        if (teamData.assigned_product_id) {
+          const { data: productData } = await supabase
+            .from('products')
+            .select('name')
+            .eq('id', teamData.assigned_product_id)
+            .single()
+          productName = productData?.name
+        }
+
+        setTeam({
+          id: teamData.team_id,
+          team_name: teamData.team_name,
+          game_id: teamData.game_id,
+          assigned_product_id: teamData.assigned_product_id,
+          assigned_product_name: productName,
+          total_balance: teamData.total_balance,
+          successful_rnd_tests: teamData.successful_rnd_tests,
+          funding_stage: teamData.funding_stage
+        })
 
         // Load game settings
         const { data: settingsData } = await supabase
@@ -69,7 +97,16 @@ export default function StudentGameplay() {
             return
           }
           
-          setGameSettings(settingsData)
+          setGameSettings({
+            game_id: settingsData.game_id,
+            current_week: settingsData.current_week,
+            total_weeks: settingsData.total_weeks,
+            game_status: settingsData.game_status,
+            cost_per_analytics: settingsData.cost_per_analytics || 5000,
+            rnd_tier_config: settingsData.rnd_tier_config,
+            week_duration_minutes: settingsData.week_duration_minutes || 5,
+            week_start_time: settingsData.week_start_time
+          })
         }
       }
 
@@ -77,27 +114,99 @@ export default function StudentGameplay() {
     }
 
     loadData()
+  }, []) // Run only once on mount
 
-    // Heartbeat: Update last_activity every 10 seconds to show player is active
-    const heartbeat = setInterval(async () => {
-      const teamId = sessionStorage.getItem('team_id')
-      if (teamId) {
-        await supabase
-          .from('teams')
-          .update({ 
-            last_activity: new Date().toISOString(),
-            is_active: true 
-          })
-          .eq('id', teamId)
+  // Countdown timer effect
+  useEffect(() => {
+    if (!gameSettings?.week_start_time || gameSettings.game_status !== 'active') return
+
+    const interval = setInterval(() => {
+      const startTime = new Date(gameSettings.week_start_time!).getTime()
+      const durationMs = (gameSettings.week_duration_minutes || 5) * 60 * 1000
+      const endTime = startTime + durationMs
+      const now = Date.now()
+      const remaining = endTime - now
+
+      if (remaining <= 0) {
+        setTimeRemaining(0)
+        // Week time expired, reload to get new week
+        console.log('⏰ Week time expired, reloading...')
+        setTimeout(() => window.location.reload(), 2000)
+        clearInterval(interval)
+      } else {
+        setTimeRemaining(remaining)
       }
-    }, 10000) // Every 10 seconds
+    }, 1000)
 
-    return () => clearInterval(heartbeat)
-  }, [supabase])
+    return () => clearInterval(interval)
+  }, [gameSettings?.week_start_time, gameSettings?.week_duration_minutes, gameSettings?.game_status])
+
+  // Set up realtime subscriptions separately, only after team and gameSettings are loaded
+  useEffect(() => {
+    if (!team || !gameSettings) return
+
+    console.log('Setting up realtime for team:', team.team_name)
+
+    // Subscribe to game_settings changes
+    const channel = supabase
+      .channel('gameplay_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_settings',
+          filter: `game_id=eq.${team.game_id}`
+        },
+        (payload) => {
+          const newSettings = payload.new as GameSettings
+          
+          if (newSettings.game_status === 'completed') {
+            console.log('🏁 Game completed, redirecting to results')
+            window.location.href = '/student/result'
+          } else if (newSettings.current_week !== gameSettings.current_week || newSettings.week_start_time !== gameSettings.week_start_time) {
+            console.log(`Week changed from ${gameSettings.current_week} to ${newSettings.current_week} or timer reset`)
+            window.location.reload()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'teams',
+          filter: `team_id=eq.${team.id}`
+        },
+        (payload) => {
+          const updatedTeam = payload.new as any
+          console.log('💰 Team balance updated:', updatedTeam.total_balance)
+          setTeam(prev => prev ? {
+            ...prev,
+            total_balance: updatedTeam.total_balance,
+            successful_rnd_tests: updatedTeam.successful_rnd_tests,
+            funding_stage: updatedTeam.funding_stage
+          } : null)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      console.log('Cleaning up realtime for team:', team.team_name)
+      supabase.removeChannel(channel)
+    }
+  }, [team?.id, gameSettings?.current_week]) // Only re-run if team ID or current week changes
+
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
 
   const handleLogout = async () => {
     // Clear session storage
-    sessionStorage.removeItem('team_id')
+    sessionStorage.removeItem('teams_id')
     sessionStorage.removeItem('team_name')
     sessionStorage.removeItem('game_id')
     
@@ -155,6 +264,26 @@ export default function StudentGameplay() {
           </div>
 
           <div className="px-10 py-8">
+            {/* Countdown Timer */}
+            {gameSettings.game_status === 'active' && gameSettings.week_start_time && (
+              <div className="mb-6 bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">⏰</span>
+                    <div>
+                      <p className="text-sm font-medium text-orange-900">Time Remaining This Week</p>
+                      <p className={`text-2xl font-bold ${timeRemaining <= 60000 ? 'text-red-600 animate-pulse' : 'text-orange-600'}`}>
+                        {formatTime(timeRemaining)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs text-orange-700">
+                    {timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Current Balance</p>
@@ -230,27 +359,31 @@ function DecisionHistory({ team }: { team: TeamData }) {
 
   useEffect(() => {
     const loadResults = async () => {
-      const { data } = await supabase
-        .from('weekly_results')
-        .select('*')
-        .eq('team_id', team.id)
-        .order('week_number', { ascending: true })
+      try {
+        console.log('🔍 Loading decision history for team.id:', team.id, 'Type:', typeof team.id)
+        const { data, error } = await supabase
+          .from('weekly_results')
+          .select('*')
+          .eq('team_id', team.id)
+          .order('week_number', { ascending: true })
 
-      if (data && data.length > 0) {
-        setResults(data)
-      } else {
-        // Mock data for prototype
-        setResults([
-          {
-            id: '1',
-            week_number: 1,
-            set_price: 99,
-            revenue: 297000,
-            profit: 277000,
-            rnd_tier: 'Basic',
-            pass_fail_status: 'pass'
-          }
-        ])
+        console.log('📊 Query error:', error)
+        console.log('📊 Query data:', data)
+        console.log('📊 Data length:', data?.length)
+
+        if (error) {
+          console.error('❌ Error loading decision history:', error)
+          setResults([])
+        } else if (data && data.length > 0) {
+          console.log('✅ Decision history loaded:', data.length, 'records')
+          setResults(data)
+        } else {
+          console.log('⚠️ No decision history found for teams_id:', team.id)
+          setResults([])
+        }
+      } catch (err) {
+        console.error('Exception loading decision history:', err)
+        setResults([])
       }
       setLoading(false)
     }
@@ -265,46 +398,48 @@ function DecisionHistory({ team }: { team: TeamData }) {
   return (
     <div className="bg-card border border-border rounded-lg p-6">
       <h3 className="text-lg font-serif font-bold mb-4">Decision History</h3>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border">
-            <tr className="text-muted-foreground">
-              <th className="text-left py-3">Week</th>
-              <th className="text-right py-3">Price Set</th>
-              <th className="text-right py-3">Revenue</th>
-              <th className="text-right py-3">Profit</th>
-              <th className="text-left py-3">R&D Tier</th>
-              <th className="text-left py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((result) => (
-              <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
-                <td className="py-3">Week {result.week_number}</td>
-                <td className="text-right">${result.set_price}</td>
-                <td className="text-right">${result.revenue.toLocaleString()}</td>
-                <td className={`text-right font-semibold ${result.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${result.profit.toLocaleString()}
-                </td>
-                <td className="py-3">{result.rnd_tier || '-'}</td>
-                <td>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${
-                      result.pass_fail_status === 'pass'
-                        ? 'bg-green-100 text-green-800'
-                        : result.pass_fail_status === 'fail'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
-                  >
-                    {result.pass_fail_status || 'Pending'}
-                  </span>
-                </td>
+      {results.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p>No decisions submitted yet. Submit decisions to see your history here.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border">
+              <tr className="text-muted-foreground">
+                <th className="text-center py-3">Week</th>
+                <th className="text-center py-3">Price Set</th>
+                <th className="text-center py-3">Revenue</th>
+                <th className="text-center py-3">R&D Tier</th>
+                <th className="text-center py-3">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {results.map((result) => (
+                <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
+                  <td className="text-center py-3">Week {result.week_number}</td>
+                  <td className="text-center">${result.set_price || 0}</td>
+                  <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
+                  <td className="text-center">{result.rnd_tier || '-'}</td>
+                  <td className="text-center">
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        result.pass_fail_status === 'pass'
+                          ? 'bg-green-100 text-green-800'
+                          : result.pass_fail_status === 'fail'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {result.pass_fail_status || 'Pending'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

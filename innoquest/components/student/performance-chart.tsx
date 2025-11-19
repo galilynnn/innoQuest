@@ -58,49 +58,18 @@ export default function PerformanceChart({ teamId }: PerformanceChartProps) {
           </div>
         </div>
 
-        {/* Profit Chart */}
-        <div>
-          <p className="text-sm font-semibold text-gray-700 mb-3">Weekly Profit</p>
-          <div className="flex items-end gap-2 h-32">
-            {chartData.map((data, idx) => (
-              <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                <div className={`w-full rounded-t relative group ${
-                  data.profit >= 0 
-                    ? 'bg-green-500'
-                    : 'bg-red-500'
-                }`}
-                  style={{
-                    height: `${Math.abs(data.profit / maxProfit) * 100}%`,
-                    minHeight: '4px'
-                  }}>
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                    ${(data.profit / 1000).toFixed(0)}K
-                  </div>
-                </div>
-                <span className="text-xs text-gray-600">{data.week}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Summary Stats */}
-        <div className="grid grid-cols-3 gap-4 pt-4 border-t border-border">
+        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
           <div className="text-center">
             <p className="text-xs text-gray-600 mb-1">Avg Revenue</p>
             <p className="text-lg font-bold text-blue-600">
-              ${(chartData.reduce((sum, d) => sum + d.revenue, 0) / chartData.length / 1000).toFixed(0)}K
+              ${(chartData.reduce((sum: number, d: any) => sum + d.revenue, 0) / chartData.length / 1000).toFixed(0)}K
             </p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-600 mb-1">Avg Profit</p>
-            <p className="text-lg font-bold text-green-600">
-              ${(chartData.reduce((sum, d) => sum + d.profit, 0) / chartData.length / 1000).toFixed(0)}K
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-600 mb-1">Best Week</p>
+            <p className="text-xs text-gray-600 mb-1">Total Units</p>
             <p className="text-lg font-bold text-primary">
-              {Math.max(...chartData.map(d => d.profit)) >= 0 ? 'W' + chartData.indexOf(chartData.reduce((prev, curr) => curr.profit > prev.profit ? curr : prev)) : 'N/A'}
+              {chartData.reduce((sum: number, d: any) => sum + d.units, 0)}
             </p>
           </div>
         </div>
