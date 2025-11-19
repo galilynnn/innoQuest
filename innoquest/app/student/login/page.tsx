@@ -46,7 +46,7 @@ export default function StudentLoginPage() {
       alert(`Hello ${team.team_name}! Welcome to InnoQuest.`)
 
       // Create session by storing team info
-      sessionStorage.setItem('teams_id', team.team_id)
+      sessionStorage.setItem('team_id', team.team_id)
       sessionStorage.setItem('team_name', team.team_name)
       sessionStorage.setItem('game_id', team.game_id)
 
@@ -64,11 +64,11 @@ export default function StudentLoginPage() {
       // Redirect based on game status
       if (gameSettings?.game_status === 'active') {
         console.log('Game is active, redirecting to gameplay')
-        router.push('/student/gameplay')
+        window.location.href = '/student/gameplay'
       } else {
         // Game in lobby or not started yet
         console.log('Game in lobby, redirecting to lobby')
-        router.push('/student/lobby')
+        window.location.href = '/student/lobby'
       }
     } catch (err) {
       setError('Login failed. Please try again.')

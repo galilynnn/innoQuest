@@ -260,6 +260,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         costs: submissionData.costs,
         rnd_tier: submissionData.rnd_tier,
         analytics_purchased: submissionData.analytics_purchased,
+        analytics_quantity: submissionData.analytics_quantity,
         pass_fail_status: submissionData.pass_fail_status,
         bonus_earned: submissionData.bonus_earned,
       }
@@ -312,6 +313,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       setRndTier2(null)
       setFirstTestFailed(false)
       setAnalyticsPurchased(false)
+      setAnalyticsQuantity(0)
     } catch (err) {
       console.error('❌ Exception during submission:', err)
       alert('Error submitting decisions')
@@ -597,7 +599,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20"
                   placeholder="Enter quantity"
                 />
-                <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Cost: ฿{(2000 * analyticsQuantity).toLocaleString()}</span>
+                <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Cost: ฿{(costPerAnalytics * analyticsQuantity).toLocaleString()}</span>
               </div>
             </div>
 

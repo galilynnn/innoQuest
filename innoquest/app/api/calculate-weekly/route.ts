@@ -40,15 +40,15 @@ export async function POST(request: NextRequest) {
       console.warn('Failed to fetch game settings, using defaults:', settingsError)
     }
 
-    // Fetch average purchase probability from products_info table
-    const { data: productsInfo, error: productsInfoError } = await supabase
-      .from('products_info')
+    // Fetch average purchase probability from products table
+    const { data: products, error: productsError } = await supabase
+      .from('products')
       .select('purchase_probability')
 
     let avgPurchaseProbability = 0.5 // Default fallback
-    if (!productsInfoError && productsInfo && productsInfo.length > 0) {
-      const sum = productsInfo.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
-      avgPurchaseProbability = sum / productsInfo.length
+    if (!productsError && products && products.length > 0) {
+      const sum = products.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
+      avgPurchaseProbability = sum / products.length
     }
 
     // Calculate results

@@ -1,14 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function Home() {
   return (
     <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] animate-[fadeIn_0.6s_ease-in]">
       <div className="bg-white rounded-3xl shadow-2xl shadow-[#E63946]/20 max-w-[480px] w-full p-12 animate-[slideUp_0.6s_ease-out]">
         <div className="text-center mb-8">
-          <div className="font-['Poppins'] font-bold text-[32px] text-[#E63946] tracking-tight mb-2">
-            InnoQuest
+          <div className="flex justify-center mb-2">
+            <Image src="/logo.png" alt="InnoQuest" width={200} height={60} className="h-auto" priority />
           </div>
           <div className="text-sm text-gray-600 font-medium">
             Startup Odyssey

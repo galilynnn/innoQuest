@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import NextImage from 'next/image'
 
 interface PlayerStatus {
   id: string
@@ -150,7 +151,10 @@ export default function StudentLobby() {
           <div className="bg-linear-to-br from-[#E63946] to-[#C1121F] text-white px-10 py-8 rounded-t-3xl">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-4xl font-bold mb-2">Welcome to InnoQuest</h1>
+                <div className="mb-2">
+                  <NextImage src="/logo.png" alt="InnoQuest" width={200} height={60} className="h-auto" priority />
+                </div>
+                <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
                 <p className="text-red-100 text-lg">Logged in as: <span className="font-semibold">{teamName}</span></p>
               </div>
               <button

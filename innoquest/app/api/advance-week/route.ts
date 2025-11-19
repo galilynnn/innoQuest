@@ -118,15 +118,23 @@ export async function POST(request: NextRequest) {
     const populationSize = gameSettingsData?.population_size || 10000
     const costPerAnalytics = gameSettingsData?.cost_per_analytics || 5000
 
-    // Fetch average purchase probability from products_info table
-    const { data: productsInfo, error: productsInfoError } = await supabase
-      .from('products_info')
+    // Fetch average purchase probability from products table
+    const { data: products, error: productsError } = await supabase
+      .from('products')
       .select('purchase_probability')
 
+    console.log('📊 Products query result:', { 
+      count: products?.length, 
+      error: productsError?.message 
+    })
+
     let avgPurchaseProbability = 0.5 // Default fallback
-    if (!productsInfoError && productsInfo && productsInfo.length > 0) {
-      const sum = productsInfo.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
-      avgPurchaseProbability = sum / productsInfo.length
+    if (!productsError && products && products.length > 0) {
+      const sum = products.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
+      avgPurchaseProbability = sum / products.length
+      console.log('✅ Calculated avg purchase probability:', avgPurchaseProbability)
+    } else {
+      console.warn('⚠️ Using default purchase probability (0.5). products table may not have purchase_probability column.')
     }
 
     // Process calculations for ALL teams that have joined the game

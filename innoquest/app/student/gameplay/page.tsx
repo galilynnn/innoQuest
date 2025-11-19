@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import NextImage from 'next/image'
 import StudentHeader from '@/components/student/student-header'
 import WeeklyDecisions from '@/components/student/weekly-decisions'
 import StudentReports from '@/components/student/student-reports'
@@ -43,7 +44,7 @@ export default function StudentGameplay() {
   useEffect(() => {
     const loadData = async () => {
       // Get team ID from session
-      const teamId = sessionStorage.getItem('teams_id')
+      const teamId = sessionStorage.getItem('team_id')
       const teamName = sessionStorage.getItem('team_name')
       const gameId = sessionStorage.getItem('game_id')
 
@@ -206,7 +207,7 @@ export default function StudentGameplay() {
 
   const handleLogout = async () => {
     // Clear session storage
-    sessionStorage.removeItem('teams_id')
+    sessionStorage.removeItem('team_id')
     sessionStorage.removeItem('team_name')
     sessionStorage.removeItem('game_id')
     
@@ -240,8 +241,8 @@ export default function StudentGameplay() {
         <div className="bg-white rounded-3xl shadow-2xl shadow-black/15 max-w-[1200px] w-full mx-auto overflow-hidden">
           <div className="bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white px-10 py-8 rounded-t-3xl">
             <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
-              <div className="font-['Poppins'] font-bold text-2xl tracking-tight">
-                InnoQuest
+              <div>
+                <NextImage src="/logo.png" alt="InnoQuest" width={150} height={45} className="h-auto" priority />
               </div>
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 px-4 py-2 rounded-xl font-semibold text-sm text-center">

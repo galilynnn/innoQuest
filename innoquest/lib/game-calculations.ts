@@ -98,7 +98,7 @@ export interface WeeklyCalculationInput {
   rnd_multiplier: number
   rnd_tier_config?: RndTierConfig // Admin-configured R&D tier settings
   investment_config?: InvestmentConfig // Admin-configured investment/funding settings
-  avg_purchase_probability?: number // Average purchase probability from products_info table
+  avg_purchase_probability?: number // Average purchase probability from products table
   current_funding_stage?: string // Team's current funding stage
   successful_rnd_tests?: number // Team's total successful R&D tests
   bonus_multiplier_pending?: number | null // Admin-granted bonus multiplier for this week
@@ -126,7 +126,7 @@ export interface WeeklyCalculationResult {
 
 /**
  * Calculate weekly demand based on average purchase probability
- * Formula: demand = avg_purchase_probability (from products_info table)
+ * Formula: demand = avg_purchase_probability (from products table)
  * The purchase_probability should represent the number of units demanded
  */
 export function calculateDemand(
