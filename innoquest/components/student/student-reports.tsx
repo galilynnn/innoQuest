@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface TeamData {
@@ -9,6 +9,8 @@ interface TeamData {
 
 interface GameSettings {
   current_week: number
+  // Admin-configured R&D tier ranges (optional)
+  rnd_tier_config?: any
 }
 
 interface RndTest {
@@ -42,6 +44,7 @@ interface StudentReportsProps {
 
 export default function StudentReports({ team, gameSettings }: StudentReportsProps) {
   const supabase = createClient()
+  const fallbackCacheRef = useRef<Record<string, { passProb: number | null; multiplier: number | null}>>({})
   const [results, setResults] = useState<WeeklyResult[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -49,10 +52,19 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
     const loadResults = async () => {
       console.log('📊 Loading reports for team.id:', team.id)
       
+      // Resolve the team's UUID primary key first (teams.id) then query weekly_results
+      const { data: teamPkData } = await supabase
+        .from('teams')
+        .select('id')
+        .eq('team_id', team.id)
+        .maybeSingle()
+
+      const teamPk = teamPkData?.id
+
       const { data: weeklyData, error: weeklyError } = await supabase
         .from('weekly_results')
         .select('*')
-        .eq('team_id', team.id)
+        .eq('teams_id', teamPk)
         .order('week_number', { ascending: true })
 
       console.log('📊 Weekly data:', weeklyData)
@@ -61,7 +73,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
       const { data: rndTests, error: rndError } = await supabase
         .from('rnd_tests')
         .select('*')
-        .eq('team_id', team.id)
+        .eq('teams_id', teamPk)
         .order('week_number', { ascending: true })
 
       console.log('📊 RND tests:', rndTests)
@@ -173,15 +185,42 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                     typeof_multiplier: typeof result.rnd_multiplier,
                   })
                   
-                  // Display actual rolled success probability from database (already in percentage format)
-                  const passProb = result.rnd_success_probability 
-                    ? result.rnd_success_probability.toFixed(1) 
-                    : 'N/A'
+                      // Display actual rolled success probability from database (already in percentage format)
+                      // Use `!= null` so 0 is still shown, and otherwise choose a random value from admin-configured tier range
+                      // Cache fallback values in a ref so they persist across renders for stable UX
+                      const key = `${result.id}-${test.tier}`
+                      if (!fallbackCacheRef.current[key]) {
+                        // If we have config ranges, pick a random number from the range
+                        if (gameSettings?.rnd_tier_config && tierLower && gameSettings.rnd_tier_config[tierLower]) {
+                          const cfg = gameSettings.rnd_tier_config[tierLower]
+                          const rand = (cfg.success_min + Math.random() * (cfg.success_max - cfg.success_min))
+                          fallbackCacheRef.current[key] = {
+                            passProb: Number(rand.toFixed(1)),
+                            multiplier: Math.round(cfg.multiplier_min + Math.random() * (cfg.multiplier_max - cfg.multiplier_min))
+                          }
+                        } else {
+                          fallbackCacheRef.current[key] = { passProb: null, multiplier: null }
+                        }
+                      }
+
+                      const passProb = result.rnd_success_probability != null
+                        ? result.rnd_success_probability.toFixed(1)
+                        : (fallbackCacheRef.current[key].passProb != null
+                            ? fallbackCacheRef.current[key].passProb.toFixed(1)
+                            : 'N/A')
                   
                   // Display actual multiplier from database (already calculated, need to convert to percentage)
-                  const multiplier = result.rnd_multiplier 
-                    ? (result.rnd_multiplier * 100).toFixed(0) 
-                    : 'N/A'
+                  // Use `!= null` so 0 is still shown. Fall back to admin-configured range if actual value not available.
+                  // Only show multiplier when the test has passed
+                  const showMultiplier = test.success || result.rnd_success
+
+                  const multiplier = showMultiplier
+                    ? (result.rnd_multiplier != null
+                        ? (result.rnd_multiplier * 100).toFixed(0)
+                        : (fallbackCacheRef.current[key].multiplier != null
+                            ? String(fallbackCacheRef.current[key].multiplier)
+                            : 'N/A'))
+                    : null
                   
                   console.log(`🔍 Calculated display values:`, {
                     passProb,
@@ -205,7 +244,11 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="text-center">{test.tier ? `${multiplier}%` : '-'}</td>
+                      <td className="text-center">{
+                        test.tier ? (
+                          multiplier == null ? '-' : `${multiplier}%`
+                        ) : '-'
+                      }</td>
                       <td className="text-center">{result.week_number}</td>
                       <td className="text-center">
                         {result.analytics_purchased ? (

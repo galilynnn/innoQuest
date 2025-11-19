@@ -125,10 +125,19 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   // Check if student has already submitted for current week
   useEffect(() => {
     const checkSubmission = async () => {
+      // Resolve the team's UUID primary key (teams.id) from the stored team id value.
+      const { data: teamPkData } = await supabase
+        .from('teams')
+        .select('id')
+        .eq('team_id', team.id)
+        .maybeSingle()
+
+      const teamPk = teamPkData?.id
+
       const { data, error } = await supabase
         .from('weekly_results')
         .select('id')
-        .eq('team_id', team.id)
+        .eq('teams_id', teamPk)
         .eq('week_number', gameSettings.current_week)
         .maybeSingle()
 
@@ -232,8 +241,17 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         analytics_purchased: submissionData.analytics_purchased,
       })
 
+      // Ensure we insert the canonical teams_id uuid (foreign key) into weekly_results
+      const { data: teamPkData } = await supabase
+        .from('teams')
+        .select('id')
+        .eq('team_id', submissionData.team_id)
+        .single()
+
+      const teamPk = teamPkData?.id
+
       const insertPayload = {
-        team_id: submissionData.team_id,
+        teams_id: teamPk,
         game_id: team.game_id,
         week_number: submissionData.week_number,
         set_price: submissionData.set_price,
@@ -266,7 +284,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       // Insert R&D tests into rnd_tests table for history tracking
       if (submissionData.rnd_tier) {
         await supabase.from('rnd_tests').insert({
-          team_id: submissionData.team_id,
+          teams_id: teamPk,
           week_number: submissionData.week_number,
           tier: submissionData.rnd_tier,
           success: false, // Will be updated by advance-week
@@ -275,7 +293,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       
       if (submissionData.rnd_tier_2) {
         await supabase.from('rnd_tests').insert({
-          team_id: submissionData.team_id,
+          teams_id: teamPk,
           week_number: submissionData.week_number,
           tier: submissionData.rnd_tier_2,
           success: false, // Will be updated by advance-week

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { calculateWeeklyResults } from '@/lib/game-calculations'
+import { calculateWeeklyResults, processRndTest, calculateDemand, calculateRevenue, calculateCOGS, calculateOperatingCosts, determineFundingStatus } from '@/lib/game-calculations'
 
 export async function POST(request: NextRequest) {
   console.log('🚀 ============================================')
@@ -163,21 +163,22 @@ export async function POST(request: NextRequest) {
     
     for (const team of teamsToProcess) {
       try {
-        console.log(`🔍 Processing team: ${team.team_name}, team.id: ${team.id}`)
+        console.log(`🔍 Processing team: ${team.team_name}, team.team_id: ${team.team_id}`)
         
         // Get team's pending decisions for current week from weekly_results
         // NOTE: Database column is 'teams_id' not 'team_id'
+        // Support both possible column names (teams_id or team_id) to be resilient to DB schema
         const { data: weeklyResult, error: weeklyResultError } = await supabase
           .from('weekly_results')
           .select('*')
-          .eq('teams_id', team.id)
+          .or(`teams_id.eq.${team.team_id},team_id.eq.${team.team_id}`)
           .eq('week_number', settings.current_week)
           .maybeSingle()
 
         console.log(`📋 Weekly result query for ${team.team_name}:`, {
           found: !!weeklyResult,
           error: weeklyResultError?.message,
-          teams_id: team.id,
+          teams_id: team.team_id,
           week_number: settings.current_week
         })
 
@@ -223,9 +224,105 @@ export async function POST(request: NextRequest) {
         console.log(JSON.stringify(calculationInput, null, 2))
 
         let results
+        let firstTest: any = null
+        let secondTest: any = null
         try {
           console.log(`⚡ Starting calculation for ${team.team_name}...`)
-          results = calculateWeeklyResults(calculationInput)
+          // If the student selected a second R&D tier, evaluate both tests
+          // to support 'two-always' and 'two-if-fail' strategies.
+          if (weeklyResult.rnd_tier_2) {
+            console.log('🔬 Processing two-test R&D strategy:', weeklyResult.rnd_strategy)
+
+            // Run the first test explicitly
+            firstTest = processRndTest(weeklyResult.rnd_tier, rndTierConfig)
+
+            // Determine whether to run second test based on strategy
+            let secondTest = null as null | ReturnType<typeof processRndTest>
+            const runSecond = (weeklyResult.rnd_strategy === 'two-always') || (weeklyResult.rnd_strategy === 'two-if-fail' && !firstTest.success)
+
+            if (runSecond) {
+              secondTest = processRndTest(weeklyResult.rnd_tier_2, rndTierConfig)
+            }
+
+            // Now compute combined results: pick the highest multiplier among successful tests,
+            // sum the costs, success if any test succeeded, and choose the probability from the run that succeeded first.
+            const combinedSuccess = firstTest.success || (secondTest?.success || false)
+            let combinedMultiplier = firstTest.multiplier
+            if (secondTest && secondTest.success && secondTest.multiplier > combinedMultiplier) {
+              combinedMultiplier = secondTest.multiplier
+            }
+            const combinedCost = firstTest.cost + (secondTest ? secondTest.cost : 0)
+            const successProbability = firstTest.success ? firstTest.successProbability : (secondTest ? secondTest.successProbability : firstTest.successProbability)
+
+            // Recreate the same calculations the main engine does, but using the combined values
+            const demand = calculateDemand(calculationInput.avg_purchase_probability, calculationInput.population_size)
+            const revenue = calculateRevenue(demand, calculationInput.set_price)
+            const cogs = calculateCOGS(revenue, calculationInput.product_id)
+            const operatingCost = calculateOperatingCosts(demand)
+            const analyticsCost = (calculationInput.analytics_quantity || 0) * (calculationInput.cost_per_analytics || 5000)
+            const totalCosts = cogs + operatingCost + combinedCost + analyticsCost
+            let profit = revenue - totalCosts
+            if (calculationInput.bonus_multiplier_pending) {
+              profit = Math.round(profit * (calculationInput.bonus_multiplier_pending || 1))
+            }
+
+            // Determine funding pass/fail using total successful tests -> include combined success
+            const totalSuccessfulTests = (team.successful_rnd_tests || 0) + (combinedSuccess ? 1 : 0)
+            const { status: passFail, bonus, qualifiesForNextStage, nextStage } = determineFundingStatus(
+              revenue,
+              demand,
+              totalSuccessfulTests,
+              calculationInput.current_funding_stage || 'Pre-Seed',
+              calculationInput.investment_config
+            )
+
+            results = {
+              demand,
+              revenue,
+              cogs_cost: cogs,
+              operating_cost: operatingCost,
+              rnd_cost: combinedCost,
+              analytics_cost: analyticsCost,
+              total_costs: totalCosts,
+              profit: Math.max(-10000, profit),
+              rnd_tested: true,
+              rnd_success: combinedSuccess,
+              pass_fail_status: passFail,
+              bonus,
+              rnd_success_probability: successProbability * 100,
+              rnd_multiplier: combinedMultiplier,
+              next_funding_stage: nextStage,
+              funding_advanced: qualifiesForNextStage,
+              bonus_multiplier_applied: calculationInput.bonus_multiplier_pending || null,
+            }
+
+            // Update second rnd_tests row success if it was run
+            try {
+              if (secondTest) {
+                const { data: rndUpdate, error: rndUpdateError } = await supabase
+                  .from('rnd_tests')
+                  .update({ success: secondTest.success })
+                  .eq('teams_id', team.team_id)
+                  .eq('week_number', settings.current_week)
+                  .eq('tier', weeklyResult.rnd_tier_2)
+
+                if (rndUpdateError) console.warn('⚠️ rnd_tests second test update error:', rndUpdateError)
+                else console.log('🔁 rnd_tests second test updated:', rndUpdate)
+              }
+            } catch (err) {
+              console.error('❌ Error updating rnd_tests (second test):', err)
+            }
+          } else {
+            // Single R&D test path (existing behavior)
+            results = calculateWeeklyResults(calculationInput)
+            // Record first test output so we can update rnd_tests history to match engine
+            firstTest = {
+              success: results.rnd_success,
+              multiplier: results.rnd_multiplier,
+              cost: results.rnd_cost,
+              successProbability: results.rnd_success_probability
+            }
+          }
 
           console.log(`💰 Calculation results for ${team.team_name}:`, {
             demand: results.demand,
@@ -272,10 +369,43 @@ export async function POST(request: NextRequest) {
           rnd_multiplier: results.rnd_multiplier,
         })
         
+          // Update rnd_tests table so test history reflects the calculated result
+          try {
+            console.log('🔁 Updating rnd_tests with roll result for', team.team_name)
+            const { data: rndUpdate, error: rndUpdateError } = await supabase
+              .from('rnd_tests')
+              .update({ success: firstTest?.success ?? results.rnd_success })
+              .eq('teams_id', team.team_id)
+              .eq('week_number', settings.current_week)
+              .eq('tier', weeklyResult.rnd_tier)
+
+            if (rndUpdateError) console.warn('⚠️ rnd_tests update error:', rndUpdateError)
+            else console.log('🔁 rnd_tests updated:', rndUpdate)
+          } catch (err) {
+            console.error('❌ Error updating rnd_tests:', err)
+          }
+        
         // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier
         const newBalance = (team.total_balance || 0) + results.profit
-        const newSuccessfulTests = (team.successful_rnd_tests || 0) + (results.rnd_success ? 1 : 0)
+        // Count how many R&D tests were successful this week (supports two-test strategies)
+        let successIncrement = 0
+        if (weeklyResult.rnd_tier_2) {
+          const firstSuccess = firstTest?.success ?? results.rnd_success
+          const secondSuccess = secondTest?.success ?? false
+          successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
+        } else {
+          successIncrement = results.rnd_success ? 1 : 0
+        }
+
+        const newSuccessfulTests = (team.successful_rnd_tests || 0) + successIncrement
         const newFundingStage = results.next_funding_stage || team.funding_stage || 'Pre-Seed'
+
+        console.log('🔔 R&D test summary for team:', team.team_name, {
+          firstTest: firstTest ? { success: firstTest.success, cost: firstTest.cost, multiplier: firstTest.multiplier } : null,
+          secondTest: secondTest ? { success: secondTest.success, cost: secondTest.cost, multiplier: secondTest.multiplier } : null,
+          successIncrement,
+          newSuccessfulTests
+        })
 
         const updateResult = await supabase
           .from('teams')

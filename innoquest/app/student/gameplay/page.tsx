@@ -362,10 +362,19 @@ function DecisionHistory({ team }: { team: TeamData }) {
     const loadResults = async () => {
       try {
         console.log('🔍 Loading decision history for team.id:', team.id, 'Type:', typeof team.id)
+        // Resolve the UUID for teams and query weekly_results by teams_id
+        const { data: teamPkData } = await supabase
+          .from('teams')
+          .select('id')
+          .eq('team_id', team.id)
+          .maybeSingle()
+
+        const teamPk = teamPkData?.id
+
         const { data, error } = await supabase
           .from('weekly_results')
           .select('*')
-          .eq('team_id', team.id)
+          .eq('teams_id', teamPk)
           .order('week_number', { ascending: true })
 
         console.log('📊 Query error:', error)
