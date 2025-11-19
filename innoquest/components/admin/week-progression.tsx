@@ -137,17 +137,29 @@ export default function WeekProgression() {
   }
 
   const handleAdvanceWeek = async () => {
+    alert('🎮 BUTTON CLICKED! Check console now!')
+    console.log('🎮 ============================================')
+    console.log('🎮 NEXT WEEK BUTTON CLICKED')
+    console.log('🎮 ============================================')
+    console.log('🎮 Current Week:', gameSettings.current_week)
+    console.log('🎮 Total Weeks:', gameSettings.total_weeks)
+    console.log('🎮 Game ID:', gameId)
+    console.log('🎮 Advancing state:', advancing)
+    
     // Check if we're on the last week (should summarize game instead of advancing)
     const isLastWeek = gameSettings.current_week === gameSettings.total_weeks
     
     if (gameSettings.current_week > gameSettings.total_weeks) {
+      console.log('❌ Game has ended!')
       alert('Game has ended!')
       return
     }
 
     // Check if all teams have joined
+    console.log('🔍 Teams Status Check:', teamsStatus)
     if (teamsStatus.joined < teamsStatus.total) {
       const disconnected = teamsStatus.total - teamsStatus.joined
+      console.log(`⚠️ Teams disconnected: ${disconnected}`)
       const proceed = confirm(
         `⚠️ WARNING: ${disconnected} player${disconnected > 1 ? 's are' : ' is'} disconnected!\n\n` +
         `Only ${teamsStatus.joined} out of ${teamsStatus.total} teams are currently active in the game.\n\n` +
@@ -155,7 +167,13 @@ export default function WeekProgression() {
         `✅ Only active players will advance to the next week\n\n` +
         `This may cause players to fall behind. Do you want to proceed anyway?`
       )
-      if (!proceed) return
+      if (!proceed) {
+        console.log('❌ User cancelled due to disconnected teams')
+        return
+      }
+      console.log('✅ User chose to proceed despite disconnected teams')
+    } else {
+      console.log('✅ All teams are joined')
     }
 
     const confirmMessage = isLastWeek
@@ -163,15 +181,18 @@ export default function WeekProgression() {
       : `🚀 Advance from Week ${gameSettings.current_week} to Week ${gameSettings.current_week + 1}?\n\nThis will:\n• Process ALL active team decisions\n• Calculate results for everyone simultaneously\n• Move everyone to the next week together\n\nContinue?`
     
     if (!confirm(confirmMessage)) {
+      console.log('❌ User cancelled advancement')
       return
     }
 
+    console.log('✅ User confirmed, starting advancement...')
     setAdvancing(true)
     try {
       // Call API to advance week and process all team results with longer timeout
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
       
+      console.log('📡 Calling /api/advance-week with gameId:', gameId)
       const response = await fetch('/api/advance-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,23 +200,49 @@ export default function WeekProgression() {
         signal: controller.signal
       })
 
+      console.log('📡 Response status:', response.status)
       clearTimeout(timeoutId)
       const result = await response.json()
+      console.log('📡 Response data:', result)
 
       if (response.ok) {
-        alert(`✅ ${result.message}\n\nWeek ${result.currentWeek} / ${result.totalWeeks}`)
+        console.log('✅ ============================================')
+        console.log('✅ WEEK ADVANCED SUCCESSFULLY!')
+        console.log('✅ ============================================')
+        console.log('✅ Full result:', result)
+        console.log('✅ Message:', result.message)
+        console.log('✅ Current Week:', result.currentWeek)
+        console.log('✅ Teams Processed:', result.teamsProcessed)
+        console.log('✅ ============================================')
+        
+        // Check if values were actually saved by querying the database
+        const { data: checkData } = await supabase
+          .from('weekly_results')
+          .select('rnd_success_probability, rnd_multiplier, revenue, demand')
+          .eq('week_number', result.currentWeek - 1)
+          .single()
+        
+        console.log('🔍 Verifying saved data for week', result.currentWeek - 1, ':', checkData)
+        
+        if (checkData && (checkData.rnd_success_probability === null || checkData.revenue === null)) {
+          alert(`⚠️ WARNING: Week advanced but calculated values are NULL!\n\nThis means the calculation failed on the server.\n\nCheck the terminal where 'npm run dev' is running for error messages.\n\nWeek ${result.currentWeek} / ${result.totalWeeks}`)
+        } else {
+          alert(`✅ ${result.message}\n\nWeek ${result.currentWeek} / ${result.totalWeeks}`)
+        }
         window.location.reload()
       } else {
+        console.error('❌ API returned error:', result.error)
         alert(`❌ Failed: ${result.error || 'Unknown error'}\n\nActive teams: ${result.activeCount || 0}`)
       }
     } catch (error: any) {
-      console.error('Error advancing week:', error)
+      console.error('❌ Exception during advance:', error)
       if (error.name === 'AbortError') {
         alert('❌ Request timed out. The week advancement is taking too long. Please try again.')
       } else {
         alert('❌ Network error while advancing week. Please check your connection and try again.')
       }
     } finally {
+      console.log('🏁 Advancement process finished')
       setAdvancing(false)
     }
   }

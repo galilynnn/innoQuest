@@ -3,8 +3,14 @@ import { createClient } from '@/lib/supabase/server'
 import { calculateWeeklyResults } from '@/lib/game-calculations'
 
 export async function POST(request: NextRequest) {
+  console.log('🚀 ============================================')
+  console.log('🚀 ADVANCE WEEK API CALLED')
+  console.log('🚀 ============================================')
+  
   try {
     const { gameId } = await request.json()
+    
+    console.log('📝 Request gameId:', gameId)
 
     if (!gameId) {
       return NextResponse.json(
@@ -105,36 +111,51 @@ export async function POST(request: NextRequest) {
     // Fetch game settings for R&D tier configuration, investment config, and admin-set values
     const { data: gameSettingsData, error: settingsDataError } = await supabase
       .from('game_settings')
-      .select('rnd_tier_config, investment_config, population_size, cost_per_analytics')
+      .select('rnd_tier_config, investment_config, population_size')
       .eq('game_id', gameId)
       .single()
 
     if (settingsDataError) {
-      console.warn('Failed to fetch game configs, will use defaults:', settingsDataError)
+      console.warn('Failed to fetch game configs:', settingsDataError)
+      console.warn('This will cause calculations to fail!')
     }
+
+    console.log('📦 Raw game settings data:', gameSettingsData)
 
     const rndTierConfig = gameSettingsData?.rnd_tier_config || undefined
     const investmentConfig = gameSettingsData?.investment_config || undefined
     const populationSize = gameSettingsData?.population_size || 10000
-    const costPerAnalytics = gameSettingsData?.cost_per_analytics || 5000
+    const costPerAnalytics = 5000 // Fixed value since column doesn't exist
 
-    // Fetch average purchase probability from products table
-    const { data: products, error: productsError } = await supabase
-      .from('products')
+    console.log('⚙️ ============================================')
+    console.log('⚙️ GAME CONFIGURATION LOADED')
+    console.log('⚙️ ============================================')
+    console.log('⚙️ RND Tier Config exists:', !!rndTierConfig)
+    console.log('⚙️ RND Tier Config keys:', rndTierConfig ? Object.keys(rndTierConfig) : 'NONE')
+    console.log('⚙️ RND Tier Config data:', JSON.stringify(rndTierConfig, null, 2))
+    console.log('⚙️ Investment Config exists:', !!investmentConfig)
+    console.log('⚙️ Investment Config keys:', investmentConfig ? Object.keys(investmentConfig) : 'NONE')
+    console.log('⚙️ Population Size:', populationSize)
+    console.log('⚙️ Cost Per Analytics:', costPerAnalytics)
+    console.log('⚙️ ============================================')
+
+    // Fetch average purchase probability from products_info table
+    const { data: productsInfo, error: productsInfoError } = await supabase
+      .from('products_info')
       .select('purchase_probability')
 
-    console.log('📊 Products query result:', { 
-      count: products?.length, 
-      error: productsError?.message 
+    console.log('📊 Products_info query result:', { 
+      count: productsInfo?.length, 
+      error: productsInfoError?.message 
     })
 
     let avgPurchaseProbability = 0.5 // Default fallback
-    if (!productsError && products && products.length > 0) {
-      const sum = products.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
-      avgPurchaseProbability = sum / products.length
+    if (!productsInfoError && productsInfo && productsInfo.length > 0) {
+      const sum = productsInfo.reduce((acc, product) => acc + (product.purchase_probability || 0), 0)
+      avgPurchaseProbability = sum / productsInfo.length
       console.log('✅ Calculated avg purchase probability:', avgPurchaseProbability)
     } else {
-      console.warn('⚠️ Using default purchase probability (0.5). products table may not have purchase_probability column.')
+      console.warn('⚠️ Using default purchase probability (0.5). products_info table may not have purchase_probability column.')
     }
 
     // Process calculations for ALL teams that have joined the game
@@ -142,18 +163,33 @@ export async function POST(request: NextRequest) {
     
     for (const team of teamsToProcess) {
       try {
+        console.log(`🔍 Processing team: ${team.team_name}, team.id: ${team.id}`)
+        
         // Get team's pending decisions for current week from weekly_results
-        const { data: weeklyResult } = await supabase
+        // NOTE: Database column is 'teams_id' not 'team_id'
+        const { data: weeklyResult, error: weeklyResultError } = await supabase
           .from('weekly_results')
           .select('*')
-          .eq('team_id', team.team_id)
+          .eq('teams_id', team.id)
           .eq('week_number', settings.current_week)
-          .single()
+          .maybeSingle()
+
+        console.log(`📋 Weekly result query for ${team.team_name}:`, {
+          found: !!weeklyResult,
+          error: weeklyResultError?.message,
+          teams_id: team.id,
+          week_number: settings.current_week
+        })
 
         if (!weeklyResult) {
-          console.log(`Team ${team.team_name} did not submit decisions for week ${settings.current_week}`)
+          console.log(`⚠️ Team ${team.team_name} did not submit decisions for week ${settings.current_week}`)
           continue
         }
+        
+        console.log(`✅ Found submission for ${team.team_name}:`, {
+          rnd_tier: weeklyResult.rnd_tier,
+          set_price: weeklyResult.set_price,
+        })
 
         // Run calculations using the game calculation engine
         const calculationInput = {
@@ -174,10 +210,38 @@ export async function POST(request: NextRequest) {
           avg_purchase_probability: avgPurchaseProbability,
         }
 
-        const results = calculateWeeklyResults(calculationInput)
+        console.log(`🎯 Calculation input for ${team.team_name}:`, {
+          set_price: calculationInput.set_price,
+          avg_purchase_probability: avgPurchaseProbability,
+          population_size: populationSize,
+          rnd_tier: calculationInput.rnd_tier,
+          has_rnd_tier_config: !!rndTierConfig,
+          has_investment_config: !!investmentConfig,
+        })
+
+        console.log(`🔧 Full calculation input for ${team.team_name}:`)
+        console.log(JSON.stringify(calculationInput, null, 2))
+
+        let results
+        try {
+          console.log(`⚡ Starting calculation for ${team.team_name}...`)
+          results = calculateWeeklyResults(calculationInput)
+
+          console.log(`💰 Calculation results for ${team.team_name}:`, {
+            demand: results.demand,
+            revenue: results.revenue,
+            costs: results.total_costs,
+            profit: results.profit,
+            rnd_success_probability: results.rnd_success_probability,
+            rnd_multiplier: results.rnd_multiplier,
+          })
+        } catch (calcError: any) {
+          console.error(`❌ Calculation failed for ${team.team_name}:`, calcError.message)
+          throw calcError
+        }
 
         // Update weekly_results with calculated values
-        await supabase
+        const { data: updateData, error: updateError } = await supabase
           .from('weekly_results')
           .update({
             demand: results.demand,
@@ -192,6 +256,21 @@ export async function POST(request: NextRequest) {
             bonus_earned: results.bonus,
           })
           .eq('id', weeklyResult.id)
+        
+        if (updateError) {
+          console.error(`❌ Failed to update weekly_results for ${team.team_name}:`, updateError)
+          throw new Error(`Database update failed: ${updateError.message}`)
+        }
+        
+        console.log(`✅ Successfully updated weekly_results for ${team.team_name}`)
+        console.log(`📊 Updated values:`, {
+          demand: results.demand,
+          revenue: results.revenue,
+          rnd_success: results.rnd_success,
+          rnd_cost: results.rnd_cost,
+          rnd_success_probability: results.rnd_success_probability,
+          rnd_multiplier: results.rnd_multiplier,
+        })
         
         // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier
         const newBalance = (team.total_balance || 0) + results.profit
@@ -298,7 +377,13 @@ export async function POST(request: NextRequest) {
       gameCompleted: newStatus === 'completed'
     })
   } catch (error: any) {
-    console.error('Advance week error:', error)
+    console.error('❌ ============================================')
+    console.error('❌ ADVANCE WEEK ERROR')
+    console.error('❌ ============================================')
+    console.error('❌ Error message:', error.message)
+    console.error('❌ Error stack:', error.stack)
+    console.error('❌ Full error:', error)
+    console.error('❌ ============================================')
     return NextResponse.json(
       { error: 'Failed to advance week: ' + (error.message || 'Unknown error') },
       { status: 500 }

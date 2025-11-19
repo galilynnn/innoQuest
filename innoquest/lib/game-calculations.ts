@@ -126,17 +126,15 @@ export interface WeeklyCalculationResult {
 
 /**
  * Calculate weekly demand based on average purchase probability
- * Formula: demand = avg_purchase_probability (from products table)
- * The purchase_probability should represent the number of units demanded
+ * Formula: demand = avg_purchase_probability (from products_info table) * population_size
+ * The purchase_probability is multiplied by admin-configured population size
  */
 export function calculateDemand(
-  avgPurchaseProbability: number = 0.5
+  avgPurchaseProbability: number = 0.5,
+  populationSize: number = 10000
 ): number {
-  // If avgPurchaseProbability seems to be a decimal (0-1), scale it up to represent actual demand
-  // Otherwise use it directly as the demand value
-  const demand = avgPurchaseProbability < 10 
-    ? Math.round(avgPurchaseProbability * 10000) // Scale up if it's a probability (0-1)
-    : Math.round(avgPurchaseProbability) // Use directly if it's already a demand value
+  // Calculate demand as probability * population size
+  const demand = Math.round(avgPurchaseProbability * populationSize)
 
   return Math.max(0, demand)
 }
@@ -199,14 +197,8 @@ export function processRndTest(
     successMultiplier = (config.multiplier_min + Math.random() * (config.multiplier_max - config.multiplier_min)) / 100
     failureMultiplier = 0.8 // Keep failure at 0.8 (can be made configurable later)
   } else {
-    // Fallback to hardcoded values if no config provided
-    const tier = RND_TIERS[rndTier]
-    if (!tier) throw new Error(`Invalid R&D tier: ${rndTier}`)
-    
-    cost = tier.cost
-    successProbability = tier.success_rate
-    successMultiplier = 1.25
-    failureMultiplier = 0.8
+    // No R&D tier config provided - admin must configure in game settings
+    throw new Error(`R&D tier configuration not found. Admin must set R&D Tier Configuration in game settings.`)
   }
 
   const success = Math.random() < successProbability
@@ -229,23 +221,19 @@ export function determineFundingStatus(
   let qualifiesForNextStage = false
   let nextStage: string | undefined
 
-  // Default hardcoded thresholds as fallback
-  const defaultThresholds: Record<string, { revenue: number; demand: number; rdTests: number }> = {
-    'Pre-Seed': { revenue: 100000, demand: 1000, rdTests: 0 },
-    'Seed': { revenue: 200000, demand: 1500, rdTests: 1 },
-    'Series A': { revenue: 350000, demand: 2000, rdTests: 3 },
-    'Series B': { revenue: 600000, demand: 2500, rdTests: 6 },
-    'Series C': { revenue: 1000000, demand: 3000, rdTests: 8 },
+  // Investment config must be provided by admin - no fallback
+  if (!investmentConfig) {
+    throw new Error(`Investment configuration not found. Admin must set Investment Configuration in game settings.`)
   }
 
-  // Use admin-configured Mean values as revenue thresholds if available
-  const thresholds = investmentConfig ? {
+  // Use admin-configured Mean values as revenue thresholds
+  const thresholds: Record<string, { revenue: number; demand: number; rdTests: number }> = {
     'Pre-Seed': { revenue: 0, demand: 500, rdTests: 0 }, // Pre-seed has no threshold (starting stage)
     'Seed': { revenue: investmentConfig.seed.mean, demand: 1000, rdTests: 1 },
     'Series A': { revenue: investmentConfig.series_a.mean, demand: 1500, rdTests: 2 },
     'Series B': { revenue: investmentConfig.series_b.mean, demand: 2000, rdTests: 3 },
     'Series C': { revenue: investmentConfig.series_c.mean, demand: 2500, rdTests: 5 },
-  } : defaultThresholds
+  }
 
   const threshold = thresholds[currentFundingStage]
   
@@ -334,13 +322,20 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
 
   // Calculate demand using average purchase probability from products_info table
   const avgPurchaseProbability = input.avg_purchase_probability || 0.5
-  const demand = calculateDemand(avgPurchaseProbability)
-  // Apply population size multiplier to demand if provided by admin
-  const populationSizeMultiplier = input.population_size ? input.population_size / 10000 : 1 // Default population is 10000
-  const adjustedDemand = Math.round(demand * populationSizeMultiplier)
-  const revenue = calculateRevenue(adjustedDemand, input.set_price)
+  const populationSize = input.population_size || 10000
+  const demand = calculateDemand(avgPurchaseProbability, populationSize)
+  const revenue = calculateRevenue(demand, input.set_price)
+  
+  console.log('🧮 Game Calculations:', {
+    avgPurchaseProbability,
+    populationSize,
+    demand,
+    set_price: input.set_price,
+    revenue,
+  })
+  
   const cogs = calculateCOGS(revenue, input.product_id)
-  const operatingCost = calculateOperatingCosts(adjustedDemand)
+  const operatingCost = calculateOperatingCosts(demand)
   const costPerAnalytics = input.cost_per_analytics || 5000
   const analyticsQuantity = input.analytics_quantity || 0
   const analyticsCost = analyticsQuantity > 0 ? costPerAnalytics * analyticsQuantity : 0
@@ -367,7 +362,7 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   )
 
   return {
-    demand: adjustedDemand,
+    demand: demand,
     revenue,
     cogs_cost: cogs,
     operating_cost: operatingCost,

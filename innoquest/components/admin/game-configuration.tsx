@@ -86,16 +86,16 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
   const [initialCapital, setInitialCapital] = useState<number>(500000)
   const [analyticsCost, setAnalyticsCost] = useState<number>(5000)
   const [investmentConfig, setInvestmentConfig] = useState<InvestmentConfig>({
-    seed: { mean: 50000, sd: 10000, sd_percent: 20, main_ratio: 0.7, bonus_ratio: 0.3, bonus_multiplier: 1.5 },
-    series_a: { mean: 200000, sd: 40000, sd_percent: 20, main_ratio: 0.7, bonus_ratio: 0.3, bonus_multiplier: 2.0 },
-    series_b: { mean: 500000, sd: 100000, sd_percent: 20, main_ratio: 0.7, bonus_ratio: 0.3, bonus_multiplier: 2.5 },
-    series_c: { mean: 1000000, sd: 200000, sd_percent: 20, main_ratio: 0.7, bonus_ratio: 0.3, bonus_multiplier: 3.0 },
+    seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+    series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+    series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+    series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
   })
   const [rndTierConfig, setRndTierConfig] = useState<RndTierConfig>({
-    basic: { min_cost: 30000, max_cost: 50000, success_min: 15, success_max: 35, multiplier_min: 100, multiplier_max: 120 },
-    standard: { min_cost: 60000, max_cost: 100000, success_min: 45, success_max: 60, multiplier_min: 115, multiplier_max: 135 },
-    advanced: { min_cost: 110000, max_cost: 160000, success_min: 65, success_max: 85, multiplier_min: 130, multiplier_max: 160 },
-    premium: { min_cost: 170000, max_cost: 200000, success_min: 75, success_max: 95, multiplier_min: 150, multiplier_max: 180 },
+    basic: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+    standard: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+    advanced: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+    premium: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
   })
   const [loading, setLoading] = useState(true)
   const [gameActive, setGameActive] = useState(false)
@@ -155,14 +155,30 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           if (data.initial_capital) setInitialCapital(data.initial_capital)
           if (data.analytics_cost) setAnalyticsCost(data.analytics_cost)
           
-          // Load investment config if exists
+          // Load investment config if exists, otherwise initialize with empty structure for admin to fill
           if (data.investment_config) {
             setInvestmentConfig(data.investment_config as InvestmentConfig)
+          } else {
+            // Initialize empty structure - admin must fill in values
+            setInvestmentConfig({
+              seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+              series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+              series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+              series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+            })
           }
           
-          // Load R&D tier config if exists
+          // Load R&D tier config if exists, otherwise initialize with empty structure for admin to fill
           if (data.rnd_tier_config) {
             setRndTierConfig(data.rnd_tier_config as RndTierConfig)
+          } else {
+            // Initialize empty structure - admin must fill in values
+            setRndTierConfig({
+              basic: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+              standard: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+              advanced: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+              premium: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
+            })
           }
           
           // Load product probability weights if exists

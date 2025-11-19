@@ -24,49 +24,6 @@ interface WeeklyDecisionsProps {
   gameSettings: GameSettings
 }
 
-const RND_TIERS = [
-  { 
-    tier: 'basic', 
-    label: 'Basic', 
-    minCost: 30000, 
-    maxCost: 50000, 
-    successMin: 15, 
-    successMax: 35,
-    multiplierMin: 100,
-    multiplierMax: 120
-  },
-  { 
-    tier: 'standard', 
-    label: 'Standard', 
-    minCost: 60000, 
-    maxCost: 100000, 
-    successMin: 45, 
-    successMax: 60,
-    multiplierMin: 115,
-    multiplierMax: 135
-  },
-  { 
-    tier: 'advanced', 
-    label: 'Advanced', 
-    minCost: 110000, 
-    maxCost: 160000, 
-    successMin: 65, 
-    successMax: 85,
-    multiplierMin: 130,
-    multiplierMax: 160
-  },
-  { 
-    tier: 'premium', 
-    label: 'Premium', 
-    minCost: 170000, 
-    maxCost: 200000, 
-    successMin: 75, 
-    successMax: 95,
-    multiplierMin: 150,
-    multiplierMax: 180
-  },
-]
-
 const RND_STRATEGIES = [
   { 
     id: 'skip', 
@@ -98,7 +55,7 @@ const RND_STRATEGIES = [
 export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsProps) {
   const supabase = createClient()
   const [assignedProduct, setAssignedProduct] = useState<{ id: string; name: string; category?: string } | null>(null)
-  const [price, setPrice] = useState<number>(99)
+  const [price, setPrice] = useState<number>(0)
   const [rndStrategy, setRndStrategy] = useState<string | null>(null)
   const [rndRound, setRndRound] = useState<number>(0)
   const [rndTier1, setRndTier1] = useState<string | null>(null)
@@ -108,7 +65,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const [analyticsQuantity, setAnalyticsQuantity] = useState(0)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [rndTiers, setRndTiers] = useState(RND_TIERS)
+  const [rndTiers, setRndTiers] = useState<any[]>([])
+  const [hasSubmitted, setHasSubmitted] = useState(false)
 
   // Load R&D tier config from game settings
   useEffect(() => {
@@ -119,51 +77,68 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           { 
             tier: 'basic', 
             label: 'Basic', 
-            minCost: config.basic?.minCost ?? 30000,
-            maxCost: config.basic?.maxCost ?? 50000,
-            successMin: config.basic?.successMin ?? 15,
-            successMax: config.basic?.successMax ?? 35,
-            multiplierMin: config.basic?.multiplierMin ?? 100,
-            multiplierMax: config.basic?.multiplierMax ?? 120
+            minCost: config.basic?.min_cost,
+            maxCost: config.basic?.max_cost,
+            successMin: config.basic?.success_min,
+            successMax: config.basic?.success_max,
+            multiplierMin: config.basic?.multiplier_min,
+            multiplierMax: config.basic?.multiplier_max
           },
           { 
             tier: 'standard', 
             label: 'Standard', 
-            minCost: config.standard?.minCost ?? 60000,
-            maxCost: config.standard?.maxCost ?? 100000,
-            successMin: config.standard?.successMin ?? 45,
-            successMax: config.standard?.successMax ?? 60,
-            multiplierMin: config.standard?.multiplierMin ?? 115,
-            multiplierMax: config.standard?.multiplierMax ?? 135
+            minCost: config.standard?.min_cost,
+            maxCost: config.standard?.max_cost,
+            successMin: config.standard?.success_min,
+            successMax: config.standard?.success_max,
+            multiplierMin: config.standard?.multiplier_min,
+            multiplierMax: config.standard?.multiplier_max
           },
           { 
             tier: 'advanced', 
             label: 'Advanced', 
-            minCost: config.advanced?.minCost ?? 110000,
-            maxCost: config.advanced?.maxCost ?? 160000,
-            successMin: config.advanced?.successMin ?? 65,
-            successMax: config.advanced?.successMax ?? 85,
-            multiplierMin: config.advanced?.multiplierMin ?? 130,
-            multiplierMax: config.advanced?.multiplierMax ?? 160
+            minCost: config.advanced?.min_cost,
+            maxCost: config.advanced?.max_cost,
+            successMin: config.advanced?.success_min,
+            successMax: config.advanced?.success_max,
+            multiplierMin: config.advanced?.multiplier_min,
+            multiplierMax: config.advanced?.multiplier_max
           },
           { 
             tier: 'premium', 
             label: 'Premium', 
-            minCost: config.premium?.minCost ?? 170000,
-            maxCost: config.premium?.maxCost ?? 200000,
-            successMin: config.premium?.successMin ?? 75,
-            successMax: config.premium?.successMax ?? 95,
-            multiplierMin: config.premium?.multiplierMin ?? 150,
-            multiplierMax: config.premium?.multiplierMax ?? 180
+            minCost: config.premium?.min_cost,
+            maxCost: config.premium?.max_cost,
+            successMin: config.premium?.success_min,
+            successMax: config.premium?.success_max,
+            multiplierMin: config.premium?.multiplier_min,
+            multiplierMax: config.premium?.multiplier_max
           }
         ]
         setRndTiers(tiers)
       } catch (error) {
         console.error('Error loading R&D tier config:', error)
-        // Keep default RND_TIERS on error
       }
     }
   }, [gameSettings.rnd_tier_config])
+
+  // Check if student has already submitted for current week
+  useEffect(() => {
+    const checkSubmission = async () => {
+      const { data, error } = await supabase
+        .from('weekly_results')
+        .select('id')
+        .eq('team_id', team.id)
+        .eq('week_number', gameSettings.current_week)
+        .maybeSingle()
+
+      if (data && !error) {
+        setHasSubmitted(true)
+      }
+    }
+
+    checkSubmission()
+  }, [team.id, gameSettings.current_week])
 
   // Load assigned product on mount
   useEffect(() => {
@@ -194,6 +169,11 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const totalCosts = 20000 + rdCost + analyticsCost
 
   const handleSubmitDecisions = async () => {
+    if (hasSubmitted) {
+      alert('You have already submitted decisions for this week. No changes allowed.')
+      return
+    }
+
     if (!assignedProduct) {
       alert('No product assigned yet. Please contact admin.')
       return
@@ -305,8 +285,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       console.log('✅ Decisions submitted successfully!')
       console.log('Database response:', data)
       alert('Decisions submitted successfully!')
+      setHasSubmitted(true)
       setShowConfirmation(false)
-      setPrice(99)
+      setPrice(0)
       setRndStrategy(null)
       setRndRound(0)
       setRndTier1(null)
@@ -324,6 +305,18 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
 
   return (
     <div className="space-y-10">
+      {hasSubmitted && (
+        <div className="bg-green-50 border-2 border-green-500 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">✅</span>
+            <div>
+              <h3 className="font-bold text-lg text-green-900">Decisions Submitted!</h3>
+              <p className="text-green-700">You have already submitted your decisions for Week {gameSettings.current_week}. No changes are allowed until the next week.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-6">
         {/* Product Display (Assigned by Admin) */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-sm">
@@ -376,10 +369,10 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   step="1"
                   value={price}
                   onChange={(e) => setPrice(Number(e.target.value))}
-                  className="flex-1 pl-10 pr-4 py-3.5 border-2 border-gray-300 rounded-xl font-['Inter'] text-[15px] text-black bg-white transition-all focus:outline-none focus:border-[#E63946] focus:shadow-lg focus:shadow-[#E63946]/10 focus:-translate-y-0.5"
+                  disabled={hasSubmitted}
+                  className="flex-1 pl-10 pr-4 py-3.5 border-2 border-gray-300 rounded-xl font-['Inter'] text-[15px] text-black bg-white transition-all focus:outline-none focus:border-[#E63946] focus:shadow-lg focus:shadow-[#E63946]/10 focus:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
-              <p className="text-xs text-gray-600 mt-1.5">Range: $50 - $200</p>
             </div>
           </div>
         </div>
@@ -421,7 +414,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                     setRndTier2(null)
                     setFirstTestFailed(false)
                   }}
-                  className="mt-1 mr-3 w-[18px] h-[18px] accent-[#E63946] cursor-pointer"
+                  disabled={hasSubmitted}
+                  className="mt-1 mr-3 w-[18px] h-[18px] accent-[#E63946] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <div className="flex-1">
                   <div className="font-semibold text-[15px] text-black mb-1">
@@ -452,9 +446,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               : rndStrategy === 'two-if-fail'
               ? !rndTier1 
                 ? 'Select tier for 1st R&D test'
-                : firstTestFailed
-                ? 'Select tier for 2nd R&D test (1st test failed)'
-                : '1st R&D selected. 2nd test only if 1st fails.'
+                : !rndTier2
+                ? 'Select tier for 2nd R&D test (will only run if 1st fails)'
+                : 'Both R&D tests selected. 2nd will only run if 1st fails.'
               : rndStrategy === 'two-always'
               ? !rndTier1
                 ? 'Select tier for 1st R&D test'
@@ -466,20 +460,15 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {rndTiers.map((tier) => {
               // Determine if this tier button should be disabled
-              let isDisabled = !rndStrategy || rndStrategy === 'skip'
+              let isDisabled = hasSubmitted || !rndStrategy || rndStrategy === 'skip'
               
               if (rndStrategy === 'one') {
                 // For 'one' strategy: disable all other tiers once one is selected
                 isDisabled = isDisabled || (rndTier1 !== null && rndTier1 !== tier.tier)
               } else if (rndStrategy === 'two-if-fail') {
-                // For 'two-if-fail': if tier1 is selected, disable ALL tiers (including tier1) unless test failed
-                // Once test fails, allow selecting tier2 but disable tier1
-                if (rndTier1 !== null && !firstTestFailed) {
-                  isDisabled = true // Disable everything until checkbox is checked
-                } else if (rndTier1 !== null && firstTestFailed) {
-                  // Test failed, allow selecting tier2, but disable tier1
-                  isDisabled = isDisabled || (rndTier2 !== null && rndTier2 !== tier.tier) || (tier.tier === rndTier1)
-                }
+                // For 'two-if-fail': Allow selecting both tiers upfront
+                // Disable once both are selected (except the selected ones)
+                isDisabled = isDisabled || (rndTier1 !== null && rndTier2 !== null && rndTier1 !== tier.tier && rndTier2 !== tier.tier)
               } else if (rndStrategy === 'two-always') {
                 // For 'two-always': disable once both are selected (except the selected ones)
                 isDisabled = isDisabled || (rndTier1 !== null && rndTier2 !== null && rndTier1 !== tier.tier && rndTier2 !== tier.tier)
@@ -499,12 +488,14 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                     } else if (rndStrategy === 'two-if-fail') {
                       if (!rndTier1) {
                         setRndTier1(tier.tier)
-                      } else if (firstTestFailed && !rndTier2 && tier.tier !== rndTier1) {
+                      } else if (!rndTier2 && rndTier1 !== tier.tier) {
                         setRndTier2(tier.tier)
+                      } else if (rndTier1 === tier.tier) {
+                        setRndTier1(rndTier2)
+                        setRndTier2(null)
                       } else if (rndTier2 === tier.tier) {
                         setRndTier2(null)
                       }
-                      // Note: Cannot deselect tier1 once selected with this strategy
                     } else if (rndStrategy === 'two-always') {
                       if (!rndTier1) {
                         setRndTier1(tier.tier)
@@ -565,29 +556,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           </h3>
           <p className="text-sm text-gray-600 mb-4">Enhance your decision-making</p>
           <div className="space-y-4">
-            {/* Simulate First Test Failure (for testing "two-if-fail" strategy) */}
-            {rndStrategy === 'two-if-fail' && rndTier1 && (
-              <div className="p-4 border-2 border-orange-300 rounded-xl bg-orange-50">
-                <label className="flex items-start cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={firstTestFailed}
-                    onChange={(e) => {
-                      setFirstTestFailed(e.target.checked)
-                      if (!e.target.checked) {
-                        setRndTier2(null)
-                      }
-                    }}
-                    className="mt-1 mr-3 w-[18px] h-[18px] accent-orange-500 cursor-pointer"
-                  />
-                  <div>
-                    <span className="font-semibold text-[15px] block text-orange-900">Simulate: 1st R&D Test Failed</span>
-                    <span className="text-sm text-orange-700">Check this to unlock 2nd R&D tier selection</span>
-                  </div>
-                </label>
-              </div>
-            )}
-            
             <div className="p-4 border-2 border-gray-200 rounded-xl transition-all">
               <label className="font-semibold text-[15px] block mb-3 text-gray-800">Analytics Tools: <span className="text-[#E63946]">{analyticsQuantity}</span> units</label>
               <div className="flex items-center gap-3">
@@ -596,7 +564,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   min="0"
                   value={analyticsQuantity}
                   onChange={(e) => setAnalyticsQuantity(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20"
+                  disabled={hasSubmitted}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Enter quantity"
                 />
                 <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Cost: ฿{(costPerAnalytics * analyticsQuantity).toLocaleString()}</span>
@@ -641,9 +610,10 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       <div className="flex gap-4">
         <button
           onClick={() => setShowConfirmation(true)}
-          className="flex-1 py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30"
+          disabled={hasSubmitted}
+          className="flex-1 py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
-          Submit Weekly Decisions
+          {hasSubmitted ? 'Already Submitted' : 'Submit Weekly Decisions'}
         </button>
       </div>
 

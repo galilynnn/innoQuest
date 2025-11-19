@@ -47,19 +47,42 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
 
   useEffect(() => {
     const loadResults = async () => {
-      const { data: weeklyData } = await supabase
+      console.log('📊 Loading reports for team.id:', team.id)
+      
+      const { data: weeklyData, error: weeklyError } = await supabase
         .from('weekly_results')
         .select('*')
         .eq('team_id', team.id)
         .order('week_number', { ascending: true })
 
-      const { data: rndTests } = await supabase
+      console.log('📊 Weekly data:', weeklyData)
+      console.log('📊 Weekly error:', weeklyError)
+
+      const { data: rndTests, error: rndError } = await supabase
         .from('rnd_tests')
         .select('*')
         .eq('team_id', team.id)
         .order('week_number', { ascending: true })
 
+      console.log('📊 RND tests:', rndTests)
+      console.log('📊 RND error:', rndError)
+
       if (weeklyData && weeklyData.length > 0) {
+        console.log('✅ Found', weeklyData.length, 'weekly results')
+        
+        // Log each result's calculated fields
+        weeklyData.forEach((result, idx) => {
+          console.log(`📊 Result ${idx + 1} (Week ${result.week_number}):`, {
+            rnd_tier: result.rnd_tier,
+            rnd_success: result.rnd_success,
+            rnd_cost: result.rnd_cost,
+            rnd_success_probability: result.rnd_success_probability,
+            rnd_multiplier: result.rnd_multiplier,
+            revenue: result.revenue,
+            demand: result.demand,
+          })
+        })
+        
         // Attach rnd_tests to each weekly result
         const resultsWithTests = weeklyData.map(result => ({
           ...result,
@@ -67,18 +90,8 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
         }))
         setResults(resultsWithTests)
       } else {
-        // Mock data for prototype
-        setResults([
-          {
-            id: '1',
-            week_number: 1,
-            revenue: 297000,
-            profit: 272000,
-            rnd_tier: 'Basic',
-            rnd_success: true,
-            rnd_tests: []
-          }
-        ])
+        console.log('⚠️ No weekly data found')
+        setResults([])
       }
       setLoading(false)
     }
@@ -138,7 +151,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
               }).map((test, globalIndex) => {
                 // Find the result this test belongs to
                 const result = results.find(r => 
-                  (r.rnd_tests && r.rnd_tests.some(t => t.id === test.id)) || 
+                  (r.rnd_tests && r.rnd_tests.some(t => 'id' in test && t.id === test.id)) || 
                   (r.rnd_tier === test.tier && r.rnd_success === test.success)
                 )
                 
@@ -148,18 +161,32 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                   // Normalize tier to lowercase for consistent comparison
                   const tierLower = test.tier?.toLowerCase()
                   
-                  // Use actual calculated values from database, with fallbacks
-                  const testCost = result.rnd_cost || (tierLower === 'basic' ? 40000 : tierLower === 'standard' ? 80000 : tierLower === 'advanced' ? 135000 : 185000)
+                  // Use actual calculated values from database (stored during advance-week)
+                  const testCost = result.rnd_cost || 0
                   
-                  // Display actual rolled success probability if available, otherwise show range
+                  console.log(`🔍 Rendering test ${globalIndex + 1}:`, {
+                    week: result.week_number,
+                    tier: test.tier,
+                    raw_rnd_success_probability: result.rnd_success_probability,
+                    raw_rnd_multiplier: result.rnd_multiplier,
+                    typeof_probability: typeof result.rnd_success_probability,
+                    typeof_multiplier: typeof result.rnd_multiplier,
+                  })
+                  
+                  // Display actual rolled success probability from database (already in percentage format)
                   const passProb = result.rnd_success_probability 
                     ? result.rnd_success_probability.toFixed(1) 
-                    : (tierLower === 'basic' ? '15-35' : tierLower === 'standard' ? '45-60' : tierLower === 'advanced' ? '65-85' : tierLower === 'premium' ? '75-95' : 'N/A')
+                    : 'N/A'
                   
-                  // Display actual multiplier if available, otherwise use mock data
+                  // Display actual multiplier from database (already calculated, need to convert to percentage)
                   const multiplier = result.rnd_multiplier 
                     ? (result.rnd_multiplier * 100).toFixed(0) 
-                    : (test.success ? (tierLower === 'basic' ? '110' : tierLower === 'standard' ? '125' : tierLower === 'advanced' ? '145' : '165') : '100')
+                    : 'N/A'
+                  
+                  console.log(`🔍 Calculated display values:`, {
+                    passProb,
+                    multiplier,
+                  })
                   
                   return (
                     <tr key={`${result.id}-${globalIndex}`} className="border-b border-border hover:bg-secondary/50">
