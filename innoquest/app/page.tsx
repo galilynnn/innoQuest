@@ -33,10 +33,10 @@ export default function Home() {
             🚀 Start Student Gameplay
           </Link>
           <Link
-            href="/admin/dashboard"
+            href="/admin/login"
             className="w-full block py-4 px-6 bg-white text-[#E63946] border-2 border-[#E63946] rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:bg-[#FFF5F5] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#E63946]/20"
           >
-            🎮 Admin Dashboard
+            🎮 Admin Login
           </Link>
         </div>
 

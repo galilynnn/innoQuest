@@ -2,11 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export default function AdminLoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -17,36 +16,16 @@ export default function AdminLoginPage() {
     setError(null)
 
     try {
-      const supabase = createClient()
-
-      // Use Supabase auth for admin
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (authError) {
-        setError('Invalid email or password')
-        setLoading(false)
-        return
+      // Simple hardcoded admin credentials
+      if (username === 'admin' && password === 'admin@innoquest') {
+        // Store admin session in localStorage
+        localStorage.setItem('adminLoggedIn', 'true')
+        localStorage.setItem('adminUsername', username)
+        
+        router.push('/admin/dashboard')
+      } else {
+        setError('Invalid username or password')
       }
-
-      // Verify admin exists in database
-      const { data: adminData, error: adminError } = await supabase
-        .from('admin_users')
-        .select('id')
-        .eq('email', email)
-        .single()
-
-      if (adminError || !adminData) {
-        setError('Admin account not found')
-        // Sign out if not admin
-        await supabase.auth.signOut()
-        setLoading(false)
-        return
-      }
-
-      router.push('/admin/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -72,17 +51,18 @@ export default function AdminLoginPage() {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-2">
-              Email
+            <label htmlFor="username" className="block text-sm font-medium mb-2">
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@example.com"
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
               className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={loading}
+              autoComplete="username"
             />
           </div>
 
@@ -98,6 +78,7 @@ export default function AdminLoginPage() {
               placeholder="Enter your password"
               className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={loading}
+              autoComplete="current-password"
             />
           </div>
 

@@ -15,7 +15,19 @@ export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabType>("lobby");
 
+  useEffect(() => {
+    // Check if admin is logged in
+    const adminLoggedIn = localStorage.getItem('adminLoggedIn')
+    if (!adminLoggedIn || adminLoggedIn !== 'true') {
+      // Not logged in, redirect to login page
+      router.push('/admin/login')
+    }
+  }, [router])
+
   const handleLogout = async () => {
+    // Clear admin session
+    localStorage.removeItem('adminLoggedIn')
+    localStorage.removeItem('adminUsername')
     sessionStorage.removeItem("current_game_id");
     router.push("/");
   };

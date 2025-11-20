@@ -20,12 +20,23 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Check if admin is logged in
+    const adminLoggedIn = localStorage.getItem('adminLoggedIn')
+    if (!adminLoggedIn || adminLoggedIn !== 'true') {
+      // Not logged in, redirect to login page
+      router.push('/admin/login')
+      return
+    }
+    
     // Set the game ID in session storage for consistency
     sessionStorage.setItem('current_game_id', gameId)
     setLoading(false)
-  }, [])
+  }, [router])
 
   const handleLogout = async () => {
+    // Clear admin session
+    localStorage.removeItem('adminLoggedIn')
+    localStorage.removeItem('adminUsername')
     sessionStorage.removeItem('current_game_id')
     router.push('/')
   }
