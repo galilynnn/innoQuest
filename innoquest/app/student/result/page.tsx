@@ -35,6 +35,12 @@ export default function ResultPage() {
         .eq('id', teamId)
         .single()
 
+      if (!team) {
+        sessionStorage.clear()
+        router.push('/student/login')
+        return
+      }
+
       if (team) {
         setTeamData(team)
       }

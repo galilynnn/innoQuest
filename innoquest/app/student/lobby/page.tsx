@@ -70,6 +70,15 @@ export default function StudentLobby() {
             .order('team_name')
 
           if (teams) {
+            // Check if my team still exists
+            const myTeamExists = teams.some(t => t.team_id === storedTeamId)
+            if (!myTeamExists) {
+              console.log('My team was deleted, redirecting to login')
+              sessionStorage.clear()
+              window.location.href = '/student/login'
+              return
+            }
+
             const playerStatuses: PlayerStatus[] = teams.map(team => ({
               id: team.team_id,
               team_name: team.team_name,
@@ -92,6 +101,20 @@ export default function StudentLobby() {
         .select('game_status, current_week')
         .eq('game_id', gameId)
         .single()
+
+      // Verify team still exists
+      const { data: currentTeam } = await supabase
+        .from('teams')
+        .select('team_id')
+        .eq('team_id', storedTeamId)
+        .single()
+
+      if (!currentTeam) {
+        console.log('Team no longer exists, redirecting to login')
+        sessionStorage.clear()
+        window.location.href = '/student/login'
+        return
+      }
 
       if (settings && settings.game_status === 'active') {
         window.location.href = '/student/gameplay'

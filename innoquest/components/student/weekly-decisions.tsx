@@ -265,7 +265,15 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       
       console.log('📝 Payload to insert:', JSON.stringify(insertPayload, null, 2))
 
-      const { data, error } = await supabase.from('weekly_results').insert(insertPayload)
+      // Insert both canonical uuid `teams_id` and legacy `team_id` where available.
+      const payloadWithKeys = {
+        ...insertPayload,
+        team_id: submissionData.team_id,
+      }
+
+      console.log('📝 Final payload inserted to weekly_results:', payloadWithKeys)
+
+      const { data, error } = await supabase.from('weekly_results').insert(payloadWithKeys)
 
       console.log('📊 Insert response - Data:', data)
       console.log('📊 Insert response - Error:', error)

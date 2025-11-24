@@ -55,7 +55,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const handleSubmitDecisions = async () => {
     setLoading(true)
     try {
-      const { data, error } = await supabase.from('weekly_results').insert({
+      // Insert both canonical uuid (teams_id) and legacy team_id for compatibility
+      const insertPayload = {
+        teams_id: team.id,
         team_id: team.id,
         week_number: gameSettings.current_week,
         set_price: price,
@@ -65,7 +67,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         analytics_purchased: analyticsPurchased,
         pass_fail_status: 'pending',
         bonus_earned: 0,
-      })
+      }
+
+      const { data, error } = await supabase.from('weekly_results').insert(insertPayload)
 
       if (!error) {
         alert('Decisions submitted successfully!')

@@ -61,6 +61,13 @@ export default function StudentGameplay() {
         .eq('team_id', teamId)
         .single()
 
+      if (!teamData) {
+        console.log('Team not found, redirecting to login')
+        sessionStorage.clear()
+        window.location.href = '/student/login'
+        return
+      }
+
       if (teamData) {
         // If there's an assigned product, fetch its name
         let productName = null

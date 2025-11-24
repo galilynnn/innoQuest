@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // Get all teams
     const { data: teams, error: teamsError } = await supabase
       .from('teams')
-      .select('*')
+      .select('*, products:assigned_product_id(product_id)')
       .eq('game_id', gameId)
 
     if (teamsError) {
@@ -192,9 +192,27 @@ export async function POST(request: NextRequest) {
           set_price: weeklyResult.set_price,
         })
 
+        // Resolve product ID from the joined products table or fallback
+        let productId = 1
+        // @ts-ignore - products property comes from the join
+        if (team.products && team.products.product_id) {
+          // Extract number from P001 format
+          // @ts-ignore
+          const match = team.products.product_id.match(/P(\d+)/)
+          if (match && match[1]) {
+            productId = parseInt(match[1], 10)
+          }
+        } else if (team.assigned_product_id) {
+           // Fallback: try to parse if it's a simple number (legacy)
+           const parsed = parseInt(team.assigned_product_id)
+           if (!isNaN(parsed) && parsed > 0 && parsed <= 10) {
+             productId = parsed
+           }
+        }
+
         // Run calculations using the game calculation engine
         const calculationInput = {
-          product_id: team.assigned_product_id ? parseInt(team.assigned_product_id) : 1,
+          product_id: productId,
           set_price: weeklyResult.set_price || 99,
           rnd_tier: weeklyResult.rnd_tier,
           analytics_purchased: weeklyResult.analytics_purchased || false,
