@@ -460,4 +460,3 @@ function DecisionHistory({ team }: { team: TeamData }) {
     </div>
   )
 }
-// 
