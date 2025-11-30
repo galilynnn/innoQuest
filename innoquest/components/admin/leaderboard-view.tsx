@@ -118,7 +118,7 @@ export default function LeaderboardView() {
               className="flex items-center gap-6 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <div className="min-w-16">
-                <div className={`text-3xl font-bold font-serif ${
+                <div className={`text-3xl font-bold font-serif text-left ${
                   idx === 0 ? 'text-yellow-500' :
                   idx === 1 ? 'text-gray-400' :
                   idx === 2 ? 'text-orange-600' :
@@ -147,7 +147,7 @@ export default function LeaderboardView() {
                   )}
                 </label>
               </div>
-              <div className="text-right min-w-48">
+              <div className="text-left min-w-48">
                 <p className="text-2xl font-bold text-primary">${(team.total_balance || 0).toLocaleString()}</p>
                 <p className="text-sm text-gray-600">Total Cash</p>
               </div>

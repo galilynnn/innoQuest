@@ -61,7 +61,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => window.open('/admin/summary', '_blank')}
+              onClick={() => window.open('/admin/gameoverview', '_blank')}
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
             >
               Game Summary

@@ -277,11 +277,6 @@ ADD COLUMN IF NOT EXISTS bonus_multiplier_pending DECIMAL(5,2) DEFAULT NULL;
 
 ## Future Enhancements
 
-1. **Custom Multiplier Input**: Let admin enter custom value (1.1×, 2.0×, etc.)
-2. **Bonus History**: Track when and why bonuses were granted
-3. **Bonus Reasons**: Add notes field explaining why bonus given
-4. **Bonus Limits**: Set max bonuses per team per game
-5. **Bonus Notifications**: Alert team when they receive bonus
-6. **Bonus Display**: Show bonus in student dashboard
-7. **Negative Multipliers**: Penalties (0.8×) for rule violations
-8. **Scheduled Bonuses**: Pre-schedule bonuses for specific weeks
+1. **Bonus Notifications**: Alert team when they receive bonus
+2. **Bonus Display**: Show bonus in student dashboard
+3. **Negative Multipliers**: Penalties (0.8×) for rule violations

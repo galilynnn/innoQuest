@@ -2,6 +2,7 @@
 
 ## Features
 - [ ] Add overall Dashboard
+- [ ] Export Game Log
 
 ## Logic Fixes
 - [✓] Fix wallet logic (revenue/balance)

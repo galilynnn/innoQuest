@@ -144,7 +144,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
             <button
               key={team.team_id}
               onClick={() => handleSelectTeam(team)}
-              className={`w-full p-4 text-center rounded-lg border transition-colors ${
+              className={`w-full p-4 text-left rounded-lg border transition-colors ${
                 selectedTeam?.team_id === team.team_id
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-card border-border hover:bg-secondary'
@@ -154,8 +154,8 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                 <span className="font-serif font-bold">#{idx + 1}</span>
                 <span className="text-sm opacity-75">{team.funding_stage}</span>
               </div>
-              <p className="font-semibold">{team.team_name}</p>
-              <p className={`text-sm ${selectedTeam?.team_id === team.team_id ? 'opacity-90' : 'text-muted-foreground'}`}>
+              <p className="font-semibold text-left">{team.team_name}</p>
+              <p className={`text-sm text-left ${selectedTeam?.team_id === team.team_id ? 'opacity-90' : 'text-muted-foreground'}`}>
                 ${team.total_balance.toLocaleString()}
               </p>
               <div className="mt-2 pt-2 border-t border-border/50">
@@ -230,12 +230,12 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                     ) : (
                       weeklyResults.map((result) => (
                         <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
-                          <td className="py-3">Week {result.week_number}</td>
-                          <td className="text-right">${(result.revenue || 0).toLocaleString()}</td>
-                          <td className={`text-right font-semibold ${(result.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <td className="py-3 text-center">Week {result.week_number}</td>
+                          <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
+                          <td className={`text-center font-semibold ${(result.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             ${(result.profit || 0).toLocaleString()}
                           </td>
-                          <td>
+                          <td className="text-center">
                             <span
                               className={`px-2 py-1 rounded text-xs font-medium ${
                                 result.pass_fail_status === 'pass'

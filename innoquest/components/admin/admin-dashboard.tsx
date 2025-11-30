@@ -47,7 +47,7 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
           </div>
           <div className="flex gap-3 items-center">
             <button
-              onClick={() => window.open('/admin/summary', '_blank')}
+              onClick={() => window.open('/admin/gameoverview', '_blank')}
               className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
             >
               Game Summary

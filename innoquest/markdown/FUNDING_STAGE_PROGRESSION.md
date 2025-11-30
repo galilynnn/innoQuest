@@ -123,7 +123,7 @@ Series C     | ฿1,000,000| ฿200,000| 20% | 0.7        | 0.3         | 3.0×
    ✓ Demand 1,200 ≥ 1,000
    ✓ R&D Tests 2 ≥ 1
    
-   Result: ADVANCE TO SEED! 🎉
+   Result: ADVANCE TO SEED! 
    Bonus: ฿180,000 × 0.05 × 1.5 = ฿13,500
    ```
 5. Team's funding_stage updated: Pre-Seed → Seed
