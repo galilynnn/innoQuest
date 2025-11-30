@@ -56,6 +56,10 @@ export interface InvestmentStage {
   main_ratio: number
   bonus_ratio: number
   bonus_multiplier: number
+  // Advancement requirements (admin-configurable)
+  expected_revenue: number  // Revenue threshold to advance to this stage
+  demand: number            // Demand threshold to advance to this stage
+  rd_count: number          // R&D test count threshold to advance to this stage
 }
 
 export interface InvestmentConfig {
@@ -94,6 +98,7 @@ export interface WeeklyCalculationInput {
   analytics_quantity?: number // Number of analytics tools purchased
   population_size?: number // Admin-configured market population size
   cost_per_analytics?: number // Admin-configured cost per analytics tool
+  base_operating_cost?: number // Admin-configured base operating cost per week
   current_customer_count: number
   rnd_multiplier: number
   rnd_tier_config?: RndTierConfig // Admin-configured R&D tier settings
@@ -126,15 +131,22 @@ export interface WeeklyCalculationResult {
 
 /**
  * Calculate weekly demand based on average purchase probability
- * Formula: demand = avg_purchase_probability (from products_info table) * population_size
- * The purchase_probability is multiplied by admin-configured population size
+ * Formula: demand = (population_size × avg_probability) / 100
+ * The avg_probability comes from customer_purchase_probabilities table (percentage 0-100)
+ * 
+ * Example:
+ * - If avg_probability = 0.5 (0.5%), population = 10000
+ * - demand = (0.5 × 10000) / 100 = 50 units
+ * 
+ * - If avg_probability = 50 (50%), population = 10000  
+ * - demand = (50 × 10000) / 100 = 5,000 units
  */
 export function calculateDemand(
-  avgPurchaseProbability: number = 0.5,
+  avgPurchaseProbability: number = 0.5,  // Percentage (0-100), default 0.5%
   populationSize: number = 10000
 ): number {
-  // Calculate demand as probability * population size
-  const demand = Math.round(avgPurchaseProbability * populationSize)
+  // avgPurchaseProbability is a percentage (0-100), so multiply by population and divide by 100
+  const demand = Math.round((avgPurchaseProbability * populationSize) / 100)
 
   return Math.max(0, demand)
 }
@@ -158,9 +170,11 @@ export function calculateCOGS(revenue: number, productId: number): number {
 
 /**
  * Calculate operating costs (base + scalable)
+ * @param demand - Number of units sold
+ * @param baseOperatingCost - Admin-configured base operating cost (default: 20000)
  */
-export function calculateOperatingCosts(demand: number): number {
-  const baseCost = 20000
+export function calculateOperatingCosts(demand: number, baseOperatingCost: number = 20000): number {
+  const baseCost = baseOperatingCost
   const scalableCost = demand * 0.5 // $0.50 per unit for logistics
 
   return baseCost + scalableCost
@@ -195,7 +209,7 @@ export function processRndTest(
     
     // Randomize multipliers within range (convert percentage to decimal)
     successMultiplier = (config.multiplier_min + Math.random() * (config.multiplier_max - config.multiplier_min)) / 100
-    failureMultiplier = 0.8 // Keep failure at 0.8 (can be made configurable later)
+    failureMultiplier = 1.0 // If R&D fails, no multiplier effect (1.0 = no change)
   } else {
     // No R&D tier config provided - admin must configure in game settings
     throw new Error(`R&D tier configuration not found. Admin must set R&D Tier Configuration in game settings.`)
@@ -226,13 +240,32 @@ export function determineFundingStatus(
     throw new Error(`Investment configuration not found. Admin must set Investment Configuration in game settings.`)
   }
 
-  // Use admin-configured Mean values as revenue thresholds
+  // Use admin-configured advancement requirements (expected_revenue, demand, rd_count)
+  // These are set by admin in game configuration
+  // If not set by admin, expected_revenue falls back to 'mean' (backward compatibility)
+  // demand and rd_count default to 0 if not configured (admin must set these)
   const thresholds: Record<string, { revenue: number; demand: number; rdTests: number }> = {
-    'Pre-Seed': { revenue: 0, demand: 500, rdTests: 0 }, // Pre-seed has no threshold (starting stage)
-    'Seed': { revenue: investmentConfig.seed.mean, demand: 1000, rdTests: 1 },
-    'Series A': { revenue: investmentConfig.series_a.mean, demand: 1500, rdTests: 2 },
-    'Series B': { revenue: investmentConfig.series_b.mean, demand: 2000, rdTests: 3 },
-    'Series C': { revenue: investmentConfig.series_c.mean, demand: 2500, rdTests: 5 },
+    'Pre-Seed': { revenue: 0, demand: 0, rdTests: 0 }, // Pre-seed has no threshold (starting stage)
+    'Seed': { 
+      revenue: investmentConfig.seed.expected_revenue ?? investmentConfig.seed.mean, 
+      demand: investmentConfig.seed.demand ?? 0, 
+      rdTests: investmentConfig.seed.rd_count ?? 0 
+    },
+    'Series A': { 
+      revenue: investmentConfig.series_a.expected_revenue ?? investmentConfig.series_a.mean, 
+      demand: investmentConfig.series_a.demand ?? 0, 
+      rdTests: investmentConfig.series_a.rd_count ?? 0 
+    },
+    'Series B': { 
+      revenue: investmentConfig.series_b.expected_revenue ?? investmentConfig.series_b.mean, 
+      demand: investmentConfig.series_b.demand ?? 0, 
+      rdTests: investmentConfig.series_b.rd_count ?? 0 
+    },
+    'Series C': { 
+      revenue: investmentConfig.series_c.expected_revenue ?? investmentConfig.series_c.mean, 
+      demand: investmentConfig.series_c.demand ?? 0, 
+      rdTests: investmentConfig.series_c.rd_count ?? 0 
+    },
   }
 
   const threshold = thresholds[currentFundingStage]
@@ -321,21 +354,48 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   }
 
   // Calculate demand using average purchase probability from products_info table
-  const avgPurchaseProbability = input.avg_purchase_probability || 0.5
+  // IMPORTANT: Use nullish coalescing (??) not logical OR (||) because 0 is a valid probability value
+  // When price is very high, probabilities are correctly 0, and we should use 0, not fallback to 0.5
+  const avgPurchaseProbability = input.avg_purchase_probability ?? 0.5
   const populationSize = input.population_size || 10000
-  const demand = calculateDemand(avgPurchaseProbability, populationSize)
-  const revenue = calculateRevenue(demand, input.set_price)
   
-  console.log('🧮 Game Calculations:', {
-    avgPurchaseProbability,
-    populationSize,
-    demand,
-    set_price: input.set_price,
-    revenue,
+  console.log(`💰 ===== REVENUE CALCULATION (Single Test) =====`)
+  console.log(`📊 Step 1 - Calculate Base Demand:`, {
+    formula: '(population_size × avg_probability) / 100',
+    avg_probability: avgPurchaseProbability,
+    population_size: populationSize,
+    calculation: `(${populationSize} × ${avgPurchaseProbability}) / 100`
   })
+  const baseDemand = calculateDemand(avgPurchaseProbability, populationSize)
+  console.log(`✅ Base Demand Result: ${baseDemand} units`)
+  
+  // Apply R&D multiplier to demand (if R&D was done)
+  let demand = baseDemand
+  if (rndTested) {
+    const demandBeforeMultiplier = demand
+    demand = Math.round(demand * rndMultiplier)
+    console.log(`🔬 Step 1.5 - Apply R&D Multiplier:`, {
+      rnd_success: rndSuccess,
+      multiplier: rndMultiplier,
+      demand_before: demandBeforeMultiplier,
+      demand_after: demand,
+      calculation: `${demandBeforeMultiplier} × ${rndMultiplier} = ${demand}`
+    })
+  }
+  
+  console.log(`📊 Step 2 - Calculate Revenue:`, {
+    formula: 'demand × price',
+    demand: demand,
+    price: input.set_price,
+    calculation: `${demand} × ${input.set_price}`
+  })
+  const revenue = calculateRevenue(demand, input.set_price)
+  console.log(`✅ Revenue Result: ฿${revenue.toLocaleString()}`)
+  console.log(`💰 ==========================================`)
   
   const cogs = calculateCOGS(revenue, input.product_id)
-  const operatingCost = calculateOperatingCosts(demand)
+  const baseOperatingCost = input.base_operating_cost ?? 20000 // Default to 20000 if not provided
+  const operatingCost = calculateOperatingCosts(demand, baseOperatingCost)
   const costPerAnalytics = input.cost_per_analytics || 5000
   const analyticsQuantity = input.analytics_quantity || 0
   const analyticsCost = analyticsQuantity > 0 ? costPerAnalytics * analyticsQuantity : 0
@@ -409,4 +469,103 @@ export function getNextFundingStage(
   }
 
   return currentStage
+}
+
+/**
+ * Calculate balance award using NORMINV formula based on ranking
+ * Formula: NORMINV(MAX(MIN((maxTeams - (rank - 1)) / (maxTeams + 1), 0.99), 0.01), mean, SD)
+ * 
+ * @param rank - The rank of the team (1 = first, 2 = second, etc.)
+ * @param maxTeams - Maximum number of teams in the game
+ * @param mean - Mean amount from investment config for the milestone stage
+ * @param sd - Standard deviation from investment config for the milestone stage
+ * @returns The balance award amount
+ */
+export function calculateBalanceAward(
+  rank: number,
+  maxTeams: number,
+  mean: number,
+  sd: number
+): number {
+  // Calculate the probability value for NORMINV
+  // Formula: (maxTeams - (rank - 1)) / (maxTeams + 1)
+  // Clamped between 0.01 and 0.99
+  const probability = Math.max(
+    Math.min((maxTeams - (rank - 1)) / (maxTeams + 1), 0.99),
+    0.01
+  )
+
+  // Calculate NORMINV (inverse normal distribution)
+  // Using approximation: mean + sd * sqrt(2) * erfinv(2*probability - 1)
+  // For simplicity, we'll use a standard normal approximation
+  const z = approximateNormInv(probability)
+  const award = mean + sd * z
+
+  // Ensure award is non-negative
+  return Math.max(0, Math.round(award))
+}
+
+/**
+ * Approximate the inverse normal distribution (NORMINV)
+ * Using the Beasley-Springer-Moro algorithm approximation
+ */
+function approximateNormInv(p: number): number {
+  // Clamp p to valid range
+  if (p <= 0) return -Infinity
+  if (p >= 1) return Infinity
+  if (p === 0.5) return 0
+
+  // Constants for approximation
+  const a1 = -3.969683028665376e+01
+  const a2 = 2.209460984245205e+02
+  const a3 = -2.759285104469687e+02
+  const a4 = 1.383577518672690e+02
+  const a5 = -3.066479806614716e+01
+  const a6 = 2.506628277459239e+00
+
+  const b1 = -5.447609879822406e+01
+  const b2 = 1.615858368580409e+02
+  const b3 = -1.556989798598866e+02
+  const b4 = 6.680131188771972e+01
+  const b5 = -1.328068155288572e+01
+
+  const c1 = -7.784894002430293e-03
+  const c2 = -3.223964580411365e-01
+  const c3 = -2.400758277161838e+00
+  const c4 = -2.549732539343734e+00
+  const c5 = 4.374664141464968e+00
+  const c6 = 2.938163982698783e+00
+
+  const d1 = 7.784695709041462e-03
+  const d2 = 3.224671290700398e-01
+  const d3 = 2.445134137142996e+00
+  const d4 = 3.754408661907416e+00
+
+  const pLow = 0.02425
+  const pHigh = 1 - pLow
+
+  let q = p - 0.5
+  let r: number
+  let x: number
+
+  if (Math.abs(q) <= 0.425) {
+    r = 0.180625 - q * q
+    x = q * (((((a1 * r + a2) * r + a3) * r + a4) * r + a5) * r + a6) /
+      (((((b1 * r + b2) * r + b3) * r + b4) * r + b5) * r + 1)
+  } else {
+    r = q < 0 ? p : 1 - p
+    r = Math.sqrt(-Math.log(r))
+    if (r <= 5) {
+      r = r - 1.6
+      x = (((((c1 * r + c2) * r + c3) * r + c4) * r + c5) * r + c6) /
+        ((((d1 * r + d2) * r + d3) * r + d4) * r + 1)
+    } else {
+      r = r - 5
+      x = (((((c1 * r + c2) * r + c3) * r + c4) * r + c5) * r + c6) /
+        ((((d1 * r + d2) * r + d3) * r + d4) * r + 1)
+    }
+    if (q < 0) x = -x
+  }
+
+  return x
 }

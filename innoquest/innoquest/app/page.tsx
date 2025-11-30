@@ -1,0 +1,66 @@
+'use client'
+
+import Link from 'next/link'
+import Image from 'next/image'
+
+export default function Home() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] animate-[fadeIn_0.6s_ease-in]">
+      <div className="bg-white rounded-3xl shadow-2xl shadow-[#E63946]/20 max-w-[480px] w-full p-12 animate-[slideUp_0.6s_ease-out]">
+        <div className="text-center mb-8">
+          <div className="flex justify-center mb-2">
+            <Image src="/logo.png" alt="InnoQuest" width={200} height={60} className="h-auto" priority />
+          </div>
+          <div className="text-sm text-gray-600 font-medium">
+            Startup Odyssey
+          </div>
+        </div>
+
+        <div className="text-center mb-8">
+          <h1 className="font-['Poppins'] font-bold text-[28px] text-black mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-base text-gray-600 font-medium">
+            Launch your startup journey
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <Link
+            href="/student/login"
+            className="w-full block py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30"
+          >
+            🚀 Start Student Gameplay
+          </Link>
+          <Link
+            href="/admin/login"
+            className="w-full block py-4 px-6 bg-white text-[#E63946] border-2 border-[#E63946] rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:bg-[#FFF5F5] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#E63946]/20"
+          >
+            🎮 Admin Login
+          </Link>
+        </div>
+
+        <div className="text-center mt-8 text-[13px] text-gray-400">
+          <p className="mb-2">🔐 Students: Login with your team credentials</p>
+          <p>💻 Optimized for iPad and desktop devices</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+        //       /| _ ╱|、  
+        //      (•̀ㅅ •́)
+        //    ＿ノ ヽ ノ＼＿ 
+        //   /　`/ ⌒Ｙ⌒ Ｙ　\
+        //   ( (三ヽ人　 /　 |
+        //   |　ﾉ⌒＼ ￣￣ヽ　ノ
+        //    ヽ＿＿＿＞､＿＿／
+        //      ｜( 王 ﾉ〈 
+        //      / ﾐ`ー―彡 \ 
+        //     |╰        ╯|   
+        //     |    /\    |
+        //     |   /  \   |                    
+        //     |  /    \  |   
+        //      U        U             signed by galilynnn :3  
+        

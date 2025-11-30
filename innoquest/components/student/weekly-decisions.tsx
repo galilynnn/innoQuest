@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface TeamData {
-  id: string
+  team_id: string // team_id (UUID primary key)
   team_name: string
   game_id: string
   assigned_product_id?: string
@@ -58,8 +58,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const [price, setPrice] = useState<number>(0)
   const [rndStrategy, setRndStrategy] = useState<string | null>(null)
   const [rndRound, setRndRound] = useState<number>(0)
-  const [rndTier1, setRndTier1] = useState<string | null>(null)
-  const [rndTier2, setRndTier2] = useState<string | null>(null)
+  const [rndSelections, setRndSelections] = useState<Array<{ id: number; tier: string }>>([]) // Queue-based selection
+  const [rndSelectionCounter, setRndSelectionCounter] = useState<number>(0) // ID counter for unique IDs
   const [firstTestFailed, setFirstTestFailed] = useState(false)
   const [analyticsPurchased, setAnalyticsPurchased] = useState(false)
   const [analyticsQuantity, setAnalyticsQuantity] = useState(0)
@@ -125,19 +125,11 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   // Check if student has already submitted for current week
   useEffect(() => {
     const checkSubmission = async () => {
-      // Resolve the team's UUID primary key (teams.id) from the stored team id value.
-      const { data: teamPkData } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('team_id', team.id)
-        .maybeSingle()
-
-      const teamPk = teamPkData?.id
-
+      // Use team_id directly as the UUID
       const { data, error } = await supabase
         .from('weekly_results')
         .select('id')
-        .eq('teams_id', teamPk)
+        .eq('team_id', team.team_id)
         .eq('week_number', gameSettings.current_week)
         .maybeSingle()
 
@@ -147,7 +139,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
     }
 
     checkSubmission()
-  }, [team.id, gameSettings.current_week])
+  }, [team.team_id, gameSettings.current_week])
 
   // Load assigned product on mount
   useEffect(() => {
@@ -160,18 +152,28 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
     }
   }, [team.assigned_product_name, team.assigned_product_id])
 
-  // Calculate R&D cost using average of min and max for both tiers
-  const rdCost1 = rndTier1 ? (() => {
-    const tier = rndTiers.find((t) => t.tier === rndTier1)
-    return tier ? (tier.minCost + tier.maxCost) / 2 : 0
-  })() : 0
-  
-  const rdCost2 = rndTier2 ? (() => {
-    const tier = rndTiers.find((t) => t.tier === rndTier2)
-    return tier ? (tier.minCost + tier.maxCost) / 2 : 0
-  })() : 0
-  
-  const rdCost = rdCost1 + rdCost2
+  // Add R&D to queue
+  const addRDToQueue = (tierName: string) => {
+    if (!rndStrategy || rndStrategy === 'skip') return
+    
+    const maxSelections = RND_STRATEGIES.find(s => s.id === rndStrategy)?.maxTests || 0
+    if (rndSelections.length >= maxSelections) return
+    
+    const newId = rndSelectionCounter + 1
+    setRndSelections([...rndSelections, { id: newId, tier: tierName }])
+    setRndSelectionCounter(newId)
+  }
+
+  // Remove R&D from queue by ID
+  const removeRDFromQueue = (id: number) => {
+    setRndSelections(rndSelections.filter(sel => sel.id !== id))
+  }
+
+  // Calculate R&D cost using average of min and max for all selections in queue
+  const rdCost = rndSelections.reduce((sum, selection) => {
+    const tier = rndTiers.find((t) => t.tier === selection.tier)
+    return sum + (tier ? (tier.minCost + tier.maxCost) / 2 : 0)
+  }, 0)
   
   const costPerAnalytics = gameSettings.cost_per_analytics || 5000
   const analyticsCost = analyticsQuantity > 0 ? costPerAnalytics * analyticsQuantity : 0
@@ -191,7 +193,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
     setLoading(true)
     
     const submissionData = {
-      team_id: team.id,
+      team_id: team.team_id,
       team_name: team.team_name,
       week_number: gameSettings.current_week,
       selected_product: assignedProduct.id,
@@ -200,10 +202,10 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       costs: totalCosts,
       rnd_strategy: rndStrategy,
       rnd_strategy_name: rndStrategy ? RND_STRATEGIES.find(s => s.id === rndStrategy)?.name : 'None',
-      rnd_tier: rndTier1,
-      rnd_tier_name: rndTier1 ? rndTiers.find(t => t.tier === rndTier1)?.label : null,
-      rnd_tier_2: rndTier2,
-      rnd_tier_2_name: rndTier2 ? rndTiers.find(t => t.tier === rndTier2)?.label : null,
+      rnd_tier: rndSelections.length > 0 ? rndSelections[0].tier : null,
+      rnd_tier_name: rndSelections.length > 0 ? rndTiers.find(t => t.tier === rndSelections[0].tier)?.label : null,
+      rnd_tier_2: rndSelections.length > 1 ? rndSelections[1].tier : null,
+      rnd_tier_2_name: rndSelections.length > 1 ? rndTiers.find(t => t.tier === rndSelections[1].tier)?.label : null,
       analytics_purchased: analyticsQuantity > 0,
       analytics_quantity: analyticsQuantity,
       pass_fail_status: 'pending',
@@ -218,12 +220,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
     console.log('Product:', submissionData.product_name)
     console.log('Price:', `฿${submissionData.set_price}`)
     console.log('R&D Strategy:', submissionData.rnd_strategy_name)
-    if (submissionData.rnd_tier_name) {
-      console.log('R&D Test 1:', submissionData.rnd_tier_name)
-    }
-    if (submissionData.rnd_tier_2_name) {
-      console.log('R&D Test 2:', submissionData.rnd_tier_2_name)
-    }
+    rndSelections.forEach((sel, idx) => {
+      console.log(`R&D Test ${idx + 1}:`, rndTiers.find(t => t.tier === sel.tier)?.label)
+    })
     console.log('Analytics Tools:', submissionData.analytics_purchased ? 'Yes' : 'No')
     console.log('Total Costs:', `฿${submissionData.costs.toLocaleString()}`)
     console.log('Timestamp:', new Date().toISOString())
@@ -232,7 +231,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
     try {
       console.log('📝 Team object:', team)
       console.log('📝 Attempting to insert:', {
-        teams_id: submissionData.team_id,
+        team_id: submissionData.team_id,
         game_id: team.game_id,
         week_number: submissionData.week_number,
         set_price: submissionData.set_price,
@@ -241,17 +240,13 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         analytics_purchased: submissionData.analytics_purchased,
       })
 
-      // Ensure we insert the canonical teams_id uuid (foreign key) into weekly_results
-      const { data: teamPkData } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('team_id', submissionData.team_id)
-        .single()
-
-      const teamPk = teamPkData?.id
+      // Use team_id directly as the UUID primary key
+      const teamPk = team.team_id
+      
+      console.log('📝 Team UUID (teamPk):', teamPk)
 
       const insertPayload = {
-        teams_id: teamPk,
+        team_id: teamPk,
         game_id: team.game_id,
         week_number: submissionData.week_number,
         set_price: submissionData.set_price,
@@ -265,10 +260,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       
       console.log('📝 Payload to insert:', JSON.stringify(insertPayload, null, 2))
 
-      // Insert both canonical uuid `teams_id` and legacy `team_id` where available.
+      // Use team_id for weekly_results
       const payloadWithKeys = {
         ...insertPayload,
-        team_id: submissionData.team_id,
       }
 
       console.log('📝 Final payload inserted to weekly_results:', payloadWithKeys)
@@ -292,7 +286,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       // Insert R&D tests into rnd_tests table for history tracking
       if (submissionData.rnd_tier) {
         await supabase.from('rnd_tests').insert({
-          teams_id: teamPk,
+          team_id: teamPk,
           week_number: submissionData.week_number,
           tier: submissionData.rnd_tier,
           success: false, // Will be updated by advance-week
@@ -301,7 +295,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       
       if (submissionData.rnd_tier_2) {
         await supabase.from('rnd_tests').insert({
-          teams_id: teamPk,
+          team_id: teamPk,
           week_number: submissionData.week_number,
           tier: submissionData.rnd_tier_2,
           success: false, // Will be updated by advance-week
@@ -310,14 +304,59 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
 
       console.log('✅ Decisions submitted successfully!')
       console.log('Database response:', data)
+
+      // Calculate purchase probabilities based on the price set
+      try {
+        console.log('📊 Preparing probability calculation...')
+        console.log('- game_id:', team.game_id)
+        console.log('- team_id (teamPk):', teamPk)
+        console.log('- product_id:', assignedProduct.id)
+        console.log('- price:', submissionData.set_price)
+        
+        // Validate all required fields before making API call
+        if (!team.game_id || !teamPk || !assignedProduct.id || submissionData.set_price === undefined) {
+          console.error('⚠️ Missing required fields for probability calculation')
+          console.error('Missing:', {
+            game_id: !team.game_id,
+            team_id: !teamPk,
+            product_id: !assignedProduct.id,
+            price: submissionData.set_price === undefined
+          })
+        } else {
+          console.log('📊 Calculating purchase probabilities for price:', submissionData.set_price)
+          const probResponse = await fetch('/api/calculate-probabilities', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: team.game_id,
+              team_id: teamPk,
+              product_id: assignedProduct.id,
+              price: submissionData.set_price
+            })
+          })
+
+          const probResult = await probResponse.json()
+          
+          if (probResponse.ok) {
+            console.log('✅ Purchase probabilities calculated:', probResult)
+          } else {
+            console.error('⚠️ Warning: Failed to calculate probabilities:', probResult.error)
+            // Don't fail the submission if probability calculation fails
+          }
+        }
+      } catch (probError) {
+        console.error('⚠️ Warning: Exception calculating probabilities:', probError)
+        // Don't fail the submission if probability calculation fails
+      }
+
       alert('Decisions submitted successfully!')
       setHasSubmitted(true)
       setShowConfirmation(false)
       setPrice(0)
       setRndStrategy(null)
       setRndRound(0)
-      setRndTier1(null)
-      setRndTier2(null)
+      setRndSelections([])
+      setRndSelectionCounter(0)
       setFirstTestFailed(false)
       setAnalyticsPurchased(false)
       setAnalyticsQuantity(0)
@@ -353,7 +392,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           <p className="text-sm text-gray-600 mb-4">Product assigned by admin</p>
           
           {assignedProduct ? (
-            <div className="p-4 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] rounded-xl border-2 border-gray-200">
+            <div className="p-4 bg-linear-to-br from-[#F5F5F5] to-[#E8D5D0] rounded-xl border-2 border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Your Product</p>
@@ -414,7 +453,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             </h3>
             {rndStrategy && rndStrategy !== 'skip' && (
               <div className="px-3 py-1 bg-blue-100 border border-blue-300 rounded-lg text-sm font-semibold text-blue-700">
-                Current round: {rndTier2 ? '2' : rndTier1 ? '1' : '0'}
+                R&D Queue: {rndSelections.length > 0 ? `${rndSelections.length}/${RND_STRATEGIES.find(s => s.id === rndStrategy)?.maxTests}` : 'Empty'}
               </div>
             )}
           </div>
@@ -426,7 +465,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 key={strategy.id}
                 className={`flex items-start p-4 border-2 rounded-xl cursor-pointer transition-all ${
                   rndStrategy === strategy.id
-                    ? 'bg-gradient-to-br from-[#FFF5F5] to-[#FFE5E7] border-[#E63946] shadow-lg'
+                    ? 'bg-linear-to-br from-[#FFF5F5] to-[#FFE5E7] border-[#E63946] shadow-lg'
                     : 'bg-white border-gray-200 hover:border-[#E63946] hover:shadow-md'
                 }`}
               >
@@ -436,8 +475,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   checked={rndStrategy === strategy.id}
                   onChange={() => {
                     setRndStrategy(strategy.id)
-                    setRndTier1(null)
-                    setRndTier2(null)
+                    setRndSelections([])
+                    setRndSelectionCounter(0)
                     setFirstTestFailed(false)
                   }}
                   disabled={hasSubmitted}
@@ -467,90 +506,65 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           <p className="text-sm text-gray-600 mb-4">
             {!rndStrategy || rndStrategy === 'skip' 
               ? 'Select your R&D strategy first' 
-              : rndStrategy === 'one' 
-              ? 'Select 1 R&D tier' 
-              : rndStrategy === 'two-if-fail'
-              ? !rndTier1 
-                ? 'Select tier for 1st R&D test'
-                : !rndTier2
-                ? 'Select tier for 2nd R&D test (will only run if 1st fails)'
-                : 'Both R&D tests selected. 2nd will only run if 1st fails.'
-              : rndStrategy === 'two-always'
-              ? !rndTier1
-                ? 'Select tier for 1st R&D test'
-                : !rndTier2
-                ? 'Select tier for 2nd R&D test'
-                : 'Both R&D tests selected'
-              : 'Select your R&D tier'}
+              : rndSelections.length === 0
+              ? `Click to add R&D tiers to your queue`
+              : rndSelections.length >= (RND_STRATEGIES.find(s => s.id === rndStrategy)?.maxTests || 0)
+              ? 'Queue full - Click X to remove items'
+              : 'Click to add more R&D tiers or use X to remove'}
           </p>
+
+          {/* R&D Queue Display */}
+          {rndSelections.length > 0 && (
+            <div className="mb-4 p-4 bg-[#FFF5F5] border-2 border-[#E63946] rounded-xl">
+              <div className="font-semibold text-sm text-gray-700 mb-3">Selected R&D Tests:</div>
+              <div className="space-y-2">
+                {rndSelections.map((sel, idx) => {
+                  const tier = rndTiers.find(t => t.tier === sel.tier)
+                  return (
+                    <div key={sel.id} className="flex items-center justify-between bg-white p-3 rounded-lg border-2 border-gray-200">
+                      <div className="flex items-center gap-3">
+                        <span className="bg-[#E63946] text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">
+                          {idx + 1}
+                        </span>
+                        <span className="font-['Poppins'] font-bold text-black">{tier?.label}</span>
+                      </div>
+                      <button
+                        onClick={() => removeRDFromQueue(sel.id)}
+                        className="text-[#E63946] hover:bg-[#FFE5E7] px-3 py-1 rounded-lg font-bold text-lg transition-all"
+                        title="Remove this R&D selection"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Available R&D Tiers to Add */}
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {rndTiers.map((tier) => {
-              // Determine if this tier button should be disabled
-              let isDisabled = hasSubmitted || !rndStrategy || rndStrategy === 'skip'
-              
-              if (rndStrategy === 'one') {
-                // For 'one' strategy: disable all other tiers once one is selected
-                isDisabled = isDisabled || (rndTier1 !== null && rndTier1 !== tier.tier)
-              } else if (rndStrategy === 'two-if-fail') {
-                // For 'two-if-fail': Allow selecting both tiers upfront
-                // Disable once both are selected (except the selected ones)
-                isDisabled = isDisabled || (rndTier1 !== null && rndTier2 !== null && rndTier1 !== tier.tier && rndTier2 !== tier.tier)
-              } else if (rndStrategy === 'two-always') {
-                // For 'two-always': disable once both are selected (except the selected ones)
-                isDisabled = isDisabled || (rndTier1 !== null && rndTier2 !== null && rndTier1 !== tier.tier && rndTier2 !== tier.tier)
-              }
-              
-              const isSelected = rndTier1 === tier.tier || rndTier2 === tier.tier
-              const isFirstTest = rndTier1 === tier.tier
+              const isDisabled = hasSubmitted || !rndStrategy || rndStrategy === 'skip' || rndSelections.length >= (RND_STRATEGIES.find(s => s.id === rndStrategy)?.maxTests || 0)
               
               return (
                 <button
                   key={tier.tier}
                   onClick={() => {
-                    if (rndStrategy === 'skip') return
-                    
-                    if (rndStrategy === 'one') {
-                      setRndTier1(rndTier1 === tier.tier ? null : tier.tier)
-                    } else if (rndStrategy === 'two-if-fail') {
-                      if (!rndTier1) {
-                        setRndTier1(tier.tier)
-                      } else if (!rndTier2 && rndTier1 !== tier.tier) {
-                        setRndTier2(tier.tier)
-                      } else if (rndTier1 === tier.tier) {
-                        setRndTier1(rndTier2)
-                        setRndTier2(null)
-                      } else if (rndTier2 === tier.tier) {
-                        setRndTier2(null)
-                      }
-                    } else if (rndStrategy === 'two-always') {
-                      if (!rndTier1) {
-                        setRndTier1(tier.tier)
-                      } else if (!rndTier2 && rndTier1 !== tier.tier) {
-                        setRndTier2(tier.tier)
-                      } else if (rndTier1 === tier.tier) {
-                        setRndTier1(rndTier2)
-                        setRndTier2(null)
-                      } else if (rndTier2 === tier.tier) {
-                        setRndTier2(null)
-                      }
+                    if (!isDisabled) {
+                      addRDToQueue(tier.tier)
                     }
                   }}
                   disabled={isDisabled}
                   className={`w-full text-left p-5 rounded-xl border-2 transition-all relative ${
                     isDisabled
                       ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
-                      : isSelected
-                      ? 'bg-gradient-to-br from-[#FFF5F5] to-[#FFE5E7] border-[#E63946] shadow-lg'
-                      : 'bg-white border-gray-200 hover:border-[#E63946] hover:shadow-md hover:-translate-y-0.5'
+                      : 'bg-white border-gray-200 hover:border-[#E63946] hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
                   }`}
                 >
                   <div className="flex justify-between items-start mb-3">
                     <span className="font-['Poppins'] font-bold text-lg text-black">{tier.label}</span>
-                    {isSelected && (
-                      <span className="bg-[#E63946] text-white px-2 py-1 rounded-md text-[11px] font-semibold">
-                        {isFirstTest ? 'TEST 1' : 'TEST 2'}
-                      </span>
-                    )}
+                    <span className="text-[#E63946] text-lg font-bold">+</span>
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex justify-between text-[13px] text-gray-600">
@@ -598,29 +612,23 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] p-6 rounded-2xl border-2 border-gray-200">
+            <div className="bg-linear-to-br from-[#F5F5F5] to-[#E8D5D0] p-6 rounded-2xl border-2 border-gray-200">
               <h4 className="font-['Poppins'] font-bold text-base text-black mb-4">Cost Summary</h4>
               <div className="space-y-3">
                 <div className="flex justify-between text-[15px]">
                   <span className="text-gray-600 font-medium">Base Operating Costs:</span>
                   <span className="font-semibold">฿20,000</span>
                 </div>
-                {rndTier1 && (
+                {rndSelections.length > 0 && (
                   <div className="flex justify-between text-[15px]">
-                    <span className="text-gray-600 font-medium">R&D Test 1 (avg):</span>
-                    <span className="font-semibold">฿{Math.round(rdCost1).toLocaleString()}</span>
+                    <span className="text-gray-600 font-medium">R&D Tests ({rndSelections.length}) (avg):</span>
+                    <span className="font-semibold">฿{Math.round(rdCost).toLocaleString()}</span>
                   </div>
                 )}
-                {rndTier2 && (
-                  <div className="flex justify-between text-[15px]">
-                    <span className="text-gray-600 font-medium">R&D Test 2 (avg):</span>
-                    <span className="font-semibold">฿{Math.round(rdCost2).toLocaleString()}</span>
-                  </div>
-                )}
-                {analyticsPurchased && (
+                {analyticsQuantity > 0 && (
                   <div className="flex justify-between text-[15px]">
                     <span className="text-gray-600 font-medium">Analytics Tools:</span>
-                    <span className="font-semibold">฿2,000</span>
+                    <span className="font-semibold">฿{(costPerAnalytics * analyticsQuantity).toLocaleString()}</span>
                   </div>
                 )}
                 <div className="border-t-2 border-gray-200 pt-3 flex justify-between font-bold">
@@ -637,7 +645,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         <button
           onClick={() => setShowConfirmation(true)}
           disabled={hasSubmitted}
-          className="flex-1 py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          className="flex-1 py-4 px-6 bg-linear-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
           {hasSubmitted ? 'Already Submitted' : 'Submit Weekly Decisions'}
         </button>
@@ -645,9 +653,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
 
       {/* Confirmation Dialog */}
       {showConfirmation && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-5 z-[1000] animate-[fadeIn_0.3s_ease]">
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-5 z-1000 animate-[fadeIn_0.3s_ease]">
           <div className="bg-white rounded-3xl max-w-[600px] w-full max-h-[90vh] overflow-y-auto animate-[bounceIn_0.5s_ease] shadow-2xl shadow-black/30">
-            <div className="bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white p-6 rounded-t-3xl">
+            <div className="bg-linear-to-br from-[#E63946] to-[#C1121F] text-white p-6 rounded-t-3xl">
               <h2 className="font-['Poppins'] text-2xl font-bold m-0">Confirm Your Decisions</h2>
             </div>
             <div className="p-6">
@@ -666,19 +674,16 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                     {rndStrategy ? RND_STRATEGIES.find((s) => s.id === rndStrategy)?.name : 'None'}
                   </div>
                 </div>
-                {rndTier1 && (
+                {rndSelections.length > 0 && (
                   <div className="pb-5 border-b border-gray-200">
-                    <div className="font-['Poppins'] font-bold text-base text-black mb-2">R&D Test 1</div>
-                    <div className="text-sm text-gray-600">
-                      {rndTiers.find((t) => t.tier === rndTier1)?.label}
-                    </div>
-                  </div>
-                )}
-                {rndTier2 && (
-                  <div className="pb-5 border-b border-gray-200">
-                    <div className="font-['Poppins'] font-bold text-base text-black mb-2">R&D Test 2</div>
-                    <div className="text-sm text-gray-600">
-                      {rndTiers.find((t) => t.tier === rndTier2)?.label}
+                    <div className="font-['Poppins'] font-bold text-base text-black mb-3">R&D Tests ({rndSelections.length})</div>
+                    <div className="space-y-2">
+                      {rndSelections.map((sel, idx) => (
+                        <div key={sel.id} className="flex items-center gap-2 text-sm text-gray-600">
+                          <span className="bg-[#E63946] text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                          <span>{rndTiers.find((t) => t.tier === sel.tier)?.label}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -697,7 +702,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 <button
                   onClick={handleSubmitDecisions}
                   disabled={loading}
-                  className="flex-1 px-4 py-3 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-semibold transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-50"
+                  className="flex-1 px-4 py-3 bg-linear-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-semibold transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-50"
                 >
                   {loading ? 'Submitting...' : 'Confirm & Submit'}
                 </button>

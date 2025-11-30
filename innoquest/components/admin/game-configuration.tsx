@@ -14,8 +14,10 @@ interface GameSettings {
   population_size?: number
   initial_capital?: number
   analytics_cost?: number
+  base_operating_cost?: number
   investment_config?: InvestmentConfig
   rnd_tier_config?: RndTierConfig
+  product_probability_weights?: ProductProbabilityWeights
 }
 
 interface InvestmentStage {
@@ -25,6 +27,10 @@ interface InvestmentStage {
   main_ratio: number
   bonus_ratio: number
   bonus_multiplier: number
+  // Advancement requirements (admin-configurable)
+  expected_revenue?: number  // Revenue threshold to advance to this stage
+  demand?: number            // Demand threshold to advance to this stage
+  rd_count?: number          // R&D test count threshold to advance to this stage
 }
 
 interface InvestmentConfig {
@@ -85,11 +91,12 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
   const [populationSize, setPopulationSize] = useState<number>(10000)
   const [initialCapital, setInitialCapital] = useState<number>(500000)
   const [analyticsCost, setAnalyticsCost] = useState<number>(5000)
+  const [baseOperatingCost, setBaseOperatingCost] = useState<number>(20000)
   const [investmentConfig, setInvestmentConfig] = useState<InvestmentConfig>({
-    seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-    series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-    series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-    series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+    seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+    series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+    series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+    series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
   })
   const [rndTierConfig, setRndTierConfig] = useState<RndTierConfig>({
     basic: { min_cost: 0, max_cost: 0, success_min: 0, success_max: 0, multiplier_min: 0, multiplier_max: 0 },
@@ -102,6 +109,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
   const [showGameBasics, setShowGameBasics] = useState(true)
   const [showGameEconomy, setShowGameEconomy] = useState(false)
   const [showInvestmentConfig, setShowInvestmentConfig] = useState(false)
+  const [showInvestmentRequirements, setShowInvestmentRequirements] = useState(false)
   const [showRndTierConfig, setShowRndTierConfig] = useState(false)
   const [showProbabilityWeights, setShowProbabilityWeights] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
@@ -154,6 +162,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           if (data.population_size) setPopulationSize(data.population_size)
           if (data.initial_capital) setInitialCapital(data.initial_capital)
           if (data.analytics_cost) setAnalyticsCost(data.analytics_cost)
+          if (data.base_operating_cost) setBaseOperatingCost(data.base_operating_cost)
           
           // Load investment config if exists, otherwise initialize with empty structure for admin to fill
           if (data.investment_config) {
@@ -161,10 +170,10 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           } else {
             // Initialize empty structure - admin must fill in values
             setInvestmentConfig({
-              seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-              series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-              series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
-              series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0 },
+              seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+              series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+              series_b: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
+              series_c: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
             })
           }
           
@@ -273,7 +282,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
       return
     }
 
-    console.log('Saving settings:', { weeks, weekDuration, maxTeams, populationSize, initialCapital, analyticsCost, gameId })
+    console.log('Saving settings:', { weeks, weekDuration, maxTeams, populationSize, initialCapital, analyticsCost, baseOperatingCost, gameId })
 
     const { data, error } = await supabase
       .from('game_settings')
@@ -284,6 +293,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
         population_size: populationSize,
         initial_capital: initialCapital,
         analytics_cost: analyticsCost,
+        base_operating_cost: baseOperatingCost,
         investment_config: investmentConfig,
         rnd_tier_config: rndTierConfig,
         product_probability_weights: probabilityWeights,
@@ -300,6 +310,13 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
         total_weeks: weeks,
         week_duration_minutes: weekDuration,
         max_teams: maxTeams,
+        population_size: populationSize,
+        initial_capital: initialCapital,
+        analytics_cost: analyticsCost,
+        base_operating_cost: baseOperatingCost,
+        investment_config: investmentConfig,
+        rnd_tier_config: rndTierConfig,
+        product_probability_weights: probabilityWeights,
       })
 
       // Trigger teams management refresh
@@ -307,10 +324,14 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
         onSettingsUpdated()
       }
       
-      const goToTeams = confirm('Settings updated successfully! Max teams set to ' + maxTeams + '.\n\nGo to Teams tab now to set up credentials?')
-      if (goToTeams && onSwitchToTeams) {
-        onSwitchToTeams()
-      }
+      alert('✅ All settings saved successfully!\n\n' +
+        'Saved configurations:\n' +
+        `• Game Basics (Weeks: ${weeks}, Duration: ${weekDuration}min, Teams: ${maxTeams})\n` +
+        `• Game Economy (Population: ${populationSize.toLocaleString()}, Capital: ฿${initialCapital.toLocaleString()}, Analytics: ฿${analyticsCost.toLocaleString()}, Base Operating Cost: ฿${baseOperatingCost.toLocaleString()})\n` +
+        '• Investment Configuration\n' +
+        '• R&D Tier Configuration\n' +
+        '• Product Probability Weights'
+      )
     } else {
       alert('Error updating settings: ' + error.message)
     }
@@ -454,7 +475,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           
           {showGameEconomy && (
             <div className="p-4">
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Population Size</label>
                   <input
@@ -504,6 +525,23 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                     className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <p className="text-xs text-muted-foreground mt-1">Amount charged per analytics tool purchased by teams</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Base Operating Cost (per week)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={baseOperatingCost}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value)
+                      setBaseOperatingCost(isNaN(val) ? 20000 : val)
+                    }}
+                    disabled={gameActive}
+                    className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Fixed base cost per week (operating cost = base + demand × 0.5)</p>
                 </div>
               </div>
             </div>
@@ -641,6 +679,89 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
             <p className="text-xs text-muted-foreground mt-2">
               Configure investment amounts and ratios for each funding stage. Changes are saved with "Save Settings" button.
             </p>
+            </div>
+          )}
+        </div>
+
+        {/* Investment Requirements (Advancement Requirements) - Collapsible */}
+        <div className="mb-8 border-2 border-gray-300 rounded-lg overflow-hidden">
+          <div 
+            className="flex items-center justify-between cursor-pointer hover:bg-gray-100 bg-gray-50 p-4 border-b border-gray-300 transition-colors"
+            onClick={() => setShowInvestmentRequirements(!showInvestmentRequirements)}
+          >
+            <h3 className="text-xl font-semibold">Investment Requirements (Advancement Requirements)</h3>
+            <span className="text-2xl">{showInvestmentRequirements ? '▼' : '▶'}</span>
+          </div>
+          
+          {showInvestmentRequirements && (
+            <div className="p-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Set the requirements teams must meet to advance to each funding stage. Teams must meet ALL three requirements (Expected Revenue, Demand, and R&D Count) to advance.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border border-gray-300 px-4 py-2 text-left">Stage</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left">Expected Revenue (฿)</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left">Demand (units)</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left">R&D Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(['seed', 'series_a', 'series_b', 'series_c'] as const).map((stage) => (
+                      <tr key={stage}>
+                        <td className="border border-gray-300 px-4 py-2 font-medium capitalize">
+                          {stage === 'seed' ? 'Seed' : stage === 'series_a' ? 'Series A' : stage === 'series_b' ? 'Series B' : 'Series C'}
+                        </td>
+                        <td className="border border-gray-300 px-2 py-2">
+                          <input
+                            type="number"
+                            step="1000"
+                            value={investmentConfig[stage].expected_revenue || 0}
+                            onChange={(e) => setInvestmentConfig({
+                              ...investmentConfig,
+                              [stage]: { ...investmentConfig[stage], expected_revenue: Number(e.target.value) }
+                            })}
+                            disabled={gameActive}
+                            className="w-full px-2 py-1 border border-gray-300 rounded"
+                          />
+                        </td>
+                        <td className="border border-gray-300 px-2 py-2">
+                          <input
+                            type="number"
+                            step="10"
+                            value={investmentConfig[stage].demand || 0}
+                            onChange={(e) => setInvestmentConfig({
+                              ...investmentConfig,
+                              [stage]: { ...investmentConfig[stage], demand: Number(e.target.value) }
+                            })}
+                            disabled={gameActive}
+                            className="w-full px-2 py-1 border border-gray-300 rounded"
+                          />
+                        </td>
+                        <td className="border border-gray-300 px-2 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={investmentConfig[stage].rd_count || 0}
+                            onChange={(e) => setInvestmentConfig({
+                              ...investmentConfig,
+                              [stage]: { ...investmentConfig[stage], rd_count: Number(e.target.value) }
+                            })}
+                            disabled={gameActive}
+                            className="w-full px-2 py-1 border border-gray-300 rounded"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                These requirements determine when teams advance to the next funding stage. Changes are saved with "Save Settings" button.
+              </p>
             </div>
           )}
         </div>

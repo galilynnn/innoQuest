@@ -229,7 +229,9 @@ export default function WeekProgression() {
         } else {
           alert(`✅ ${result.message}\n\nWeek ${result.currentWeek} / ${result.totalWeeks}`)
         }
-        window.location.reload()
+        // Reload game settings and teams status instead of full page reload to stay on this page
+        loadGameSettings()
+        loadTeamsStatus()
       } else {
         console.error('❌ API returned error:', result.error)
         alert(`❌ Failed: ${result.error || 'Unknown error'}\n\nActive teams: ${result.activeCount || 0}`)

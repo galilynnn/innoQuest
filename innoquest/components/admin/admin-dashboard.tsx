@@ -45,12 +45,20 @@ export default function AdminDashboard({ onBack }: AdminDashboardProps) {
             </h1>
             <p className="text-gray-600 text-sm">Manage game sessions and monitor teams</p>
           </div>
-          <button
-            onClick={onBack}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            Back
-          </button>
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => window.open('/admin/summary', '_blank')}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+            >
+              Game Summary
+            </button>
+            <button
+              onClick={onBack}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Back
+            </button>
+          </div>
         </div>
       </header>
 

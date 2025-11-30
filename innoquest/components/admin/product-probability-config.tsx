@@ -23,6 +23,11 @@ interface Product {
   name: string
 }
 
+interface EditingProduct {
+  productId: string
+  newName: string
+}
+
 interface ProductProbabilityConfigProps {
   gameId: string
   gameActive: boolean
@@ -34,6 +39,8 @@ export default function ProductProbabilityConfig({ gameId, gameActive }: Product
   const [probabilityWeights, setProbabilityWeights] = useState<ProductProbabilityWeights>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<EditingProduct | null>(null)
+  const [savingProductName, setSavingProductName] = useState(false)
 
   useEffect(() => {
     loadProductsAndWeights()
@@ -104,6 +111,40 @@ export default function ProductProbabilityConfig({ gameId, gameActive }: Product
       alert('Error saving: ' + error.message)
     } else {
       alert('Product probability weights saved successfully!')
+    }
+  }
+
+  const handleProductNameChange = async (productId: string, newName: string) => {
+    if (!newName.trim()) {
+      alert('Product name cannot be empty')
+      return
+    }
+
+    setSavingProductName(true)
+    try {
+      const response = await fetch('/api/update-product', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId, name: newName })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update product name')
+      }
+
+      // Update local state
+      setProducts(products.map(p => 
+        p.id === productId ? { ...p, name: newName } : p
+      ))
+      setEditingProduct(null)
+      alert('Product name updated successfully')
+    } catch (err) {
+      console.error('Error updating product name:', err)
+      alert(err instanceof Error ? err.message : 'Failed to update product name')
+    } finally {
+      setSavingProductName(false)
     }
   }
 
@@ -180,7 +221,43 @@ export default function ProductProbabilityConfig({ gameId, gameActive }: Product
               return (
                 <tr key={product.id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-4 py-2 font-medium">
-                    {product.name}
+                    {editingProduct?.productId === product.id ? (
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          value={editingProduct.newName}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, newName: e.target.value })}
+                          className="flex-1 px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+                          autoFocus
+                          disabled={savingProductName}
+                        />
+                        <button
+                          onClick={() => handleProductNameChange(product.id, editingProduct.newName)}
+                          disabled={savingProductName}
+                          className="px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 text-sm"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => setEditingProduct(null)}
+                          disabled={savingProductName}
+                          className="px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 disabled:bg-gray-400 text-sm"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-center justify-between">
+                        <span>{product.name}</span>
+                        <button
+                          onClick={() => setEditingProduct({ productId: product.id, newName: product.name })}
+                          disabled={gameActive || savingProductName}
+                          className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )}
                   </td>
                   <td className="border border-gray-300 px-2 py-2">
                     <input

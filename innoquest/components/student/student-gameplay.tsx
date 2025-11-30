@@ -22,11 +22,11 @@ export default function StudentGameplay({ onBack, teamId: initialTeamId }: Stude
     if (gameState.teams.length === 0 && !selectedTeamId) {
       createTeam('Your Team')
     } else if (gameState.teams.length > 0 && !selectedTeamId) {
-      setSelectedTeamId(gameState.teams[0].id)
+      setSelectedTeamId(gameState.teams[0].team_id)
     }
   }, [gameState.teams, selectedTeamId, createTeam])
 
-  const currentTeam = selectedTeamId ? gameState.teams.find(t => t.id === selectedTeamId) : null
+  const currentTeam = selectedTeamId ? gameState.teams.find(t => t.team_id === selectedTeamId) : null
   const budget = currentTeam?.budget || 0
   const week = currentTeam?.currentWeek || 1
 

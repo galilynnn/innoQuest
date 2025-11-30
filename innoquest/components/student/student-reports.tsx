@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 interface TeamData {
-  id: string
+  team_id: string
 }
 
 interface GameSettings {
@@ -50,21 +50,13 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
 
   useEffect(() => {
     const loadResults = async () => {
-      console.log('📊 Loading reports for team.id:', team.id)
+      console.log('📊 Loading reports for team.team_id:', team.team_id)
       
-      // Resolve the team's UUID primary key first (teams.id) then query weekly_results
-      const { data: teamPkData } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('team_id', team.id)
-        .maybeSingle()
-
-      const teamPk = teamPkData?.id
-
+      // Use team_id directly as the UUID for weekly_results query
       const { data: weeklyData, error: weeklyError } = await supabase
         .from('weekly_results')
         .select('*')
-        .eq('teams_id', teamPk)
+        .eq('team_id', team.team_id)
         .order('week_number', { ascending: true })
 
       console.log('📊 Weekly data:', weeklyData)
@@ -73,7 +65,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
       const { data: rndTests, error: rndError } = await supabase
         .from('rnd_tests')
         .select('*')
-        .eq('teams_id', teamPk)
+        .eq('team_id', team.team_id)
         .order('week_number', { ascending: true })
 
       console.log('📊 RND tests:', rndTests)
@@ -109,7 +101,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
     }
 
     loadResults()
-  }, [team.id, supabase])
+  }, [team.team_id, supabase])
 
   if (loading) {
     return <div className="p-4">Loading reports...</div>
@@ -145,14 +137,11 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
             <thead className="border-b border-border">
               <tr className="text-muted-foreground">
                 <th className="text-center py-3">Test No.</th>
+                <th className="text-center py-3">Week</th>
                 <th className="text-center py-3">Tier</th>
-                <th className="text-center py-3">Test Cost</th>
-                <th className="text-center py-3">Pass Prob</th>
                 <th className="text-center py-3">Test Result</th>
                 <th className="text-center py-3">Multiplier</th>
-                <th className="text-center py-3">Week</th>
                 <th className="text-center py-3">Analytics Tools</th>
-                <th className="text-center py-3">Price</th>
               </tr>
             </thead>
             <tbody>
@@ -230,11 +219,10 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                   return (
                     <tr key={`${result.id}-${globalIndex}`} className="border-b border-border hover:bg-secondary/50">
                       <td className="py-3 text-center">{globalIndex + 1}</td>
+                      <td className="text-center">{result.week_number}</td>
                       <td className="py-3 text-center">{
                         test.tier || <span className="text-muted-foreground">No R&D</span>
                       }</td>
-                      <td className="text-center">฿{test.tier ? testCost.toLocaleString() : '-'}</td>
-                      <td className="text-center">{test.tier ? `${passProb}%` : '-'}</td>
                       <td className="text-center">
                         {test.tier ? (
                           <span className={test.success ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
@@ -249,7 +237,6 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                           multiplier == null ? '-' : `${multiplier}%`
                         ) : '-'
                       }</td>
-                      <td className="text-center">{result.week_number}</td>
                       <td className="text-center">
                         {result.analytics_purchased ? (
                           <span className="text-green-600">✓ Yes</span>
@@ -257,7 +244,6 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
-                      <td className="text-center">฿{(result.set_price || 0).toLocaleString()}</td>
                     </tr>
                   )
                 })()

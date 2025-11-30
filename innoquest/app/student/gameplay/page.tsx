@@ -10,7 +10,7 @@ import StudentReports from '@/components/student/student-reports'
 type TabType = 'decisions' | 'reports' | 'history'
 
 interface TeamData {
-  id: string
+  team_id: string
   team_name: string
   game_id: string
   selected_product_id?: string
@@ -39,49 +39,63 @@ export default function StudentGameplay() {
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
+  const [totalRevenue, setTotalRevenue] = useState<number>(0)
 
   // Load initial data once
   useEffect(() => {
     const loadData = async () => {
+      console.log('🔍 Loading gameplay data...')
+      
       // Get team ID from session
       const teamId = sessionStorage.getItem('team_id')
       const teamName = sessionStorage.getItem('team_name')
       const gameId = sessionStorage.getItem('game_id')
 
+      console.log('📝 Session data:', { teamId, teamName, gameId })
+
       if (!teamId) {
-        // Not logged in, redirect to login
+        console.log('❌ No team_id in session, redirecting to login')
+        sessionStorage.clear()
         window.location.href = '/student/login'
         return
       }
 
       // Load team data from database
-      const { data: teamData } = await supabase
+      console.log('🔍 Querying teams table for team_id:', teamId)
+      const { data: teamData, error: teamError } = await supabase
         .from('teams')
         .select('team_id, team_name, game_id, assigned_product_id, total_balance, successful_rnd_tests, funding_stage')
         .eq('team_id', teamId)
         .single()
 
-      if (!teamData) {
-        console.log('Team not found, redirecting to login')
+      console.log('📊 Team query result:', { teamData, teamError })
+
+      if (teamError || !teamData) {
+        console.error('❌ Team query error or team not found:', teamError)
+        console.log('❌ Team not found in database - likely game was reset')
         sessionStorage.clear()
         window.location.href = '/student/login'
         return
       }
 
       if (teamData) {
+        console.log('✅ Team found:', teamData.team_name)
+        
         // If there's an assigned product, fetch its name
         let productName = null
         if (teamData.assigned_product_id) {
+          console.log('🔍 Fetching product name for:', teamData.assigned_product_id)
           const { data: productData } = await supabase
             .from('products')
             .select('name')
             .eq('id', teamData.assigned_product_id)
             .single()
           productName = productData?.name
+          console.log('📦 Product name:', productName)
         }
 
         setTeam({
-          id: teamData.team_id,
+          team_id: teamData.team_id,
           team_name: teamData.team_name,
           game_id: teamData.game_id,
           assigned_product_id: teamData.assigned_product_id,
@@ -91,33 +105,57 @@ export default function StudentGameplay() {
           funding_stage: teamData.funding_stage
         })
 
+        // Calculate total revenue from weekly results
+        const { data: weeklyResults } = await supabase
+          .from('weekly_results')
+          .select('revenue')
+          .eq('team_id', teamData.team_id)
+        
+        const revenue = weeklyResults?.reduce((sum, r) => sum + (r.revenue || 0), 0) || 0
+        setTotalRevenue(revenue)
+
         // Load game settings
-        const { data: settingsData } = await supabase
+        console.log('🔍 Querying game_settings for game_id:', teamData.game_id)
+        const { data: settingsData, error: settingsError } = await supabase
           .from('game_settings')
           .select('*')
           .eq('game_id', teamData.game_id)
           .single()
 
+        console.log('📊 Game settings query result:', { settingsData, settingsError })
+
+        console.log('📊 Game settings query result:', { settingsData, settingsError })
+
         if (settingsData) {
+          console.log('📊 Game Settings loaded:', settingsData)
+          console.log('📊 Game Status:', settingsData.game_status)
+          console.log('📊 Current Week:', settingsData.current_week)
+          
           // Check if game hasn't started yet
           if (settingsData.game_status !== 'active' && settingsData.game_status !== 'completed') {
+            console.log('⚠️ Game not active/completed, redirecting to lobby. Status:', settingsData.game_status)
             window.location.href = '/student/lobby'
             return
           }
+          
+          console.log('✅ Game is active/completed, loading gameplay page')
           
           setGameSettings({
             game_id: settingsData.game_id,
             current_week: settingsData.current_week,
             total_weeks: settingsData.total_weeks,
             game_status: settingsData.game_status,
-            cost_per_analytics: settingsData.cost_per_analytics || 5000,
+            cost_per_analytics: settingsData.analytics_cost || 5000,
             rnd_tier_config: settingsData.rnd_tier_config,
             week_duration_minutes: settingsData.week_duration_minutes || 5,
             week_start_time: settingsData.week_start_time
           })
+        } else {
+          console.log('❌ No game settings found for game_id:', teamData.game_id)
         }
       }
 
+      console.log('✅ Finished loading data')
       setLoading(false)
     }
 
@@ -184,7 +222,7 @@ export default function StudentGameplay() {
           event: 'UPDATE',
           schema: 'public',
           table: 'teams',
-          filter: `team_id=eq.${team.id}`
+          filter: `team_id=eq.${team.team_id}`
         },
         (payload) => {
           const updatedTeam = payload.new as any
@@ -195,6 +233,17 @@ export default function StudentGameplay() {
             successful_rnd_tests: updatedTeam.successful_rnd_tests,
             funding_stage: updatedTeam.funding_stage
           } : null)
+          
+          // Update revenue if weekly results changed
+          const updateRevenue = async () => {
+            const { data: weeklyResults } = await supabase
+              .from('weekly_results')
+              .select('revenue')
+              .eq('team_id', updatedTeam.team_id)
+            const revenue = weeklyResults?.reduce((sum, r) => sum + (r.revenue || 0), 0) || 0
+            setTotalRevenue(revenue)
+          }
+          updateRevenue()
         }
       )
       .subscribe()
@@ -203,7 +252,7 @@ export default function StudentGameplay() {
       console.log('Cleaning up realtime for team:', team.team_name)
       supabase.removeChannel(channel)
     }
-  }, [team?.id, gameSettings?.current_week]) // Only re-run if team ID or current week changes
+  }, [team?.team_id, gameSettings?.current_week]) // Only re-run if team ID or current week changes
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -292,10 +341,16 @@ export default function StudentGameplay() {
               </div>
             )}
 
-            <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+            <div className="grid grid-cols-3 gap-4 mb-8">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Current Balance</p>
+                <p className="text-sm text-gray-600 mb-1">Revenue</p>
+                <p className="text-3xl font-bold text-blue-600">${totalRevenue.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">Total from all weeks</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Balance</p>
                 <p className="text-3xl font-bold text-[#E63946]">${team.total_balance.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">From milestone achievements</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-gray-600 mb-1">Funding Stage</p>
@@ -368,20 +423,12 @@ function DecisionHistory({ team }: { team: TeamData }) {
   useEffect(() => {
     const loadResults = async () => {
       try {
-        console.log('🔍 Loading decision history for team.id:', team.id, 'Type:', typeof team.id)
-        // Resolve the UUID for teams and query weekly_results by teams_id
-        const { data: teamPkData } = await supabase
-          .from('teams')
-          .select('id')
-          .eq('team_id', team.id)
-          .maybeSingle()
-
-        const teamPk = teamPkData?.id
-
+        console.log('🔍 Loading decision history for team.team_id:', team.team_id, 'Type:', typeof team.team_id)
+        // Use team_id directly as the UUID for weekly_results query
         const { data, error } = await supabase
           .from('weekly_results')
           .select('*')
-          .eq('teams_id', teamPk)
+          .eq('team_id', team.team_id)
           .order('week_number', { ascending: true })
 
         console.log('📊 Query error:', error)
@@ -395,7 +442,7 @@ function DecisionHistory({ team }: { team: TeamData }) {
           console.log('✅ Decision history loaded:', data.length, 'records')
           setResults(data)
         } else {
-          console.log('⚠️ No decision history found for teams_id:', team.id)
+          console.log('⚠️ No decision history found for team_id:', team.team_id)
           setResults([])
         }
       } catch (err) {
@@ -406,7 +453,7 @@ function DecisionHistory({ team }: { team: TeamData }) {
     }
 
     loadResults()
-  }, [team.id, supabase])
+  }, [team.team_id, supabase])
 
   if (loading) {
     return <div className="p-4">Loading history...</div>

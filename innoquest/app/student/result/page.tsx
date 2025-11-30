@@ -28,14 +28,15 @@ export default function ResultPage() {
         return
       }
 
-      // Load current team data using id column
+      // Load current team data using team_id column
       const { data: team } = await supabase
         .from('teams')
         .select('team_name, total_balance, funding_stage, successful_rnd_tests')
-        .eq('id', teamId)
+        .eq('team_id', teamId)
         .single()
 
       if (!team) {
+        console.log('❌ Team not found in database - likely game was reset')
         sessionStorage.clear()
         router.push('/student/login')
         return

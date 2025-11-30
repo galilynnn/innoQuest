@@ -59,11 +59,19 @@ export default function AdminDashboard() {
             <h1 className="text-4xl font-serif font-bold mb-2">Admin Dashboard</h1>
             <p className="text-muted-foreground">Manage game configuration, teams, and monitor gameplay</p>
           </div>
-          <Link href="/admin/lobby">
-            <button className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">
-              Go to Gameplay Control
+          <div className="flex gap-3">
+            <button
+              onClick={() => window.open('/admin/summary', '_blank')}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              Game Summary
             </button>
-          </Link>
+            <Link href="/admin/lobby">
+              <button className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">
+                Go to Gameplay Control
+              </button>
+            </Link>
+          </div>
         </div>
 
         <div className="flex border-b border-border mb-8 overflow-x-auto">

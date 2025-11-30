@@ -117,9 +117,13 @@ export default function StudentLobby() {
       }
 
       if (settings && settings.game_status === 'active') {
-        window.location.href = '/student/gameplay'
+        console.log('🎮 Game is active in lobby, redirecting to gameplay')
+        alert(`DEBUG: In lobby page, game status is '${settings.game_status}', trying to redirect to gameplay`)
+        // window.location.href = '/student/gameplay'
         return
       }
+      
+      console.log('📋 Staying in lobby, game status:', settings?.game_status)
 
       const { data: teams } = await supabase
         .from('teams')

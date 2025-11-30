@@ -34,7 +34,7 @@ interface DecisionsTabProps {
 export default function DecisionsTab({ teamId }: DecisionsTabProps) {
   const { gameState, updateTeamDecisions, submitWeeklyDecisions } = useGame()
   
-  const team = teamId && gameState.teams.find(t => t.id === teamId)
+  const team = teamId && gameState.teams.find(t => t.team_id === teamId)
   const [selectedProduct, setSelectedProduct] = useState(team?.selectedProduct || 1)
   const [price, setPrice] = useState(team?.weeklyPrice || 99)
   const [selectedRdTier, setSelectedRdTier] = useState<number | null>(team?.rdTier ?? null)
@@ -49,20 +49,20 @@ export default function DecisionsTab({ teamId }: DecisionsTabProps) {
 
   const handleProductChange = (productId: number) => {
     setSelectedProduct(productId)
-    updateTeamDecisions(team.id, { selectedProduct: productId })
+    updateTeamDecisions(team.team_id, { selectedProduct: productId })
   }
 
   const handlePriceUpdate = () => {
-    updateTeamDecisions(team.id, { weeklyPrice: price })
+    updateTeamDecisions(team.team_id, { weeklyPrice: price })
   }
 
   const handleRdTierSelect = (tierIdx: number) => {
     setSelectedRdTier(tierIdx)
-    updateTeamDecisions(team.id, { rdTier: tierIdx })
+    updateTeamDecisions(team.team_id, { rdTier: tierIdx })
   }
 
   const handleSubmit = () => {
-    submitWeeklyDecisions(team.id)
+    submitWeeklyDecisions(team.team_id)
   }
 
   const selectedRdCost = selectedRdTier !== null ? rdTiers[selectedRdTier].cost : 0

@@ -5,11 +5,28 @@ import Image from 'next/image'
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-gradient-to-br from-[#F5F5F5] to-[#E8D5D0] animate-[fadeIn_0.6s_ease-in]">
+    <div className="min-h-screen flex items-center justify-center p-5 bg-linear-to-br from-[#F5F5F5] to-[#E8D5D0] animate-[fadeIn_0.6s_ease-in]">
       <div className="bg-white rounded-3xl shadow-2xl shadow-[#E63946]/20 max-w-[480px] w-full p-12 animate-[slideUp_0.6s_ease-out]">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-2">
-            <Image src="/logo.png" alt="InnoQuest" width={200} height={60} className="h-auto" priority />
+          <div className="flex justify-center mb-4">
+            <div className="inline-flex items-center justify-center w-32 h-32 bg-linear-to-br from-white to-[#f8f9fa] rounded-full shadow-lg" style={{
+              boxShadow: '0 10px 30px rgba(230, 57, 70, 0.2), 0 0 0 2px rgba(230, 57, 70, 0.1)'
+            }}>
+              <Image 
+                src="/logo.png" 
+                alt="InnoQuest" 
+                width={120} 
+                height={120} 
+                className="rounded-full transition-transform duration-300 hover:scale-105" 
+                style={{
+                  width: '120px',
+                  height: '120px',
+                  boxShadow: 'inset 0 0 20px rgba(0, 0, 0, 0.1), 0 8px 16px rgba(0, 0, 0, 0.1)',
+                  objectFit: 'cover'
+                }}
+                priority 
+              />
+            </div>
           </div>
           <div className="text-sm text-gray-600 font-medium">
             Startup Odyssey
@@ -28,7 +45,7 @@ export default function Home() {
         <div className="space-y-4">
           <Link
             href="/student/login"
-            className="w-full block py-4 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30"
+            className="w-full block py-4 px-6 bg-linear-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base text-center transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30"
           >
             🚀 Start Student Gameplay
           </Link>
@@ -41,8 +58,7 @@ export default function Home() {
         </div>
 
         <div className="text-center mt-8 text-[13px] text-gray-400">
-          <p className="mb-2">🔐 Students: Login with your team credentials</p>
-          <p>💻 Optimized for iPad and desktop devices</p>
+          <p className="mb-2">Optimized for iPad and desktop devices ONLY</p>
         </div>
       </div>
     </div>

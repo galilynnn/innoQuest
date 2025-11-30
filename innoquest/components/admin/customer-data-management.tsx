@@ -3,24 +3,13 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
-interface Customer {
+interface CustomerDataSet {
   id: string
-  job: string
-  gender: string
-  monthly_income: number
-  income_segment: string
-  monthly_food_spending: number
-  spending_segment: string
-  working_hours_per_week: number
-  dietary_preference: string
-  health_consciousness: number
-  health_segment: string
-  interest_in_experimental_food: number
-  experimental_segment: string
-  sustainability_preference: number
-  sustainability_segment: string
-  brand_loyalty: number
-  loyalty_segment: number
+  game_id: string
+  file_name: string
+  uploaded_at: string
+  record_count: number
+  is_active: boolean
 }
 
 interface CustomerDataManagementProps {
@@ -29,178 +18,361 @@ interface CustomerDataManagementProps {
 
 export default function CustomerDataManagement({ gameId }: CustomerDataManagementProps) {
   const supabase = createClient()
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [dataSets, setDataSets] = useState<CustomerDataSet[]>([])
+  const [activeDataSetId, setActiveDataSetId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [formData, setFormData] = useState({
-    customer_id: '',
-    monthly_income: 50000,
-    monthly_food_spending: 700,
-    working_hours: 40,
-    health_consciousness: 5,
-    experimental_food_interest: 5,
-    sustainability_preference: 5,
-    brand_loyalty: 5,
-    probability: 0.75,
-  })
+  const [uploading, setUploading] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState<string>('')
 
   useEffect(() => {
-    loadCustomers()
+    loadDataSets()
   }, [])
 
-  const loadCustomers = async () => {
-    const { data } = await supabase.from('customers_data').select('*').limit(50)
+  const loadDataSets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_data_sets')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('uploaded_at', { ascending: false })
 
-    if (data) {
-      setCustomers(data)
+      if (error) throw error
+
+      setDataSets(data || [])
+      
+      // Set the active data set (most recent or marked as active)
+      const active = data?.find(d => d.is_active)
+      if (active) {
+        setActiveDataSetId(active.id)
+      } else if (data && data.length > 0) {
+        setActiveDataSetId(data[0].id)
+      }
+    } catch (error) {
+      console.error('Error loading data sets:', error)
     }
     setLoading(false)
   }
 
-  const handleAddCustomer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    const { error } = await supabase.from('customers').insert({
-      ...formData,
-    })
-
-    if (!error) {
-      setFormData({
-        customer_id: '',
-        monthly_income: 50000,
-        monthly_food_spending: 700,
-        working_hours: 40,
-        health_consciousness: 5,
-        experimental_food_interest: 5,
-        sustainability_preference: 5,
-        brand_loyalty: 5,
-        probability: 0.75,
-      })
-      setShowAddForm(false)
-      loadCustomers()
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setSelectedFile(e.target.files[0])
     }
   }
 
-  const handleDeleteCustomer = async (id: string) => {
-    if (!confirm('Delete this customer?')) return
+  const handleUploadCSV = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedFile) {
+      alert('Please select a CSV file')
+      return
+    }
 
-    await supabase.from('customers').delete().eq('id', id)
-    loadCustomers()
+    setUploading(true)
+    try {
+      // Parse CSV file
+      const text = await selectedFile.text()
+      const lines = text.split('\n').filter(line => line.trim() !== '')
+      
+      if (lines.length < 1) {
+        alert('CSV file is empty')
+        setUploading(false)
+        return
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim())
+      const records = []
+
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '') continue
+        
+        const values = lines[i].split(',').map(v => v.trim())
+        const record: any = {}
+        
+        headers.forEach((header, index) => {
+          record[header] = values[index] || ''
+        })
+        records.push(record)
+      }
+
+      if (records.length === 0) {
+        alert('No valid records found in CSV')
+        setUploading(false)
+        return
+      }
+
+      console.log(`Uploading ${records.length} records from ${selectedFile.name}`)
+
+      // Store file reference and record count in database
+      const { data, error } = await supabase
+        .from('customer_data_sets')
+        .insert({
+          game_id: gameId,
+          file_name: selectedFile.name,
+          record_count: records.length,
+          uploaded_at: new Date().toISOString(),
+          is_active: dataSets.length === 0,
+          csv_data: records,
+        })
+        .select()
+
+      if (error) {
+        console.error('Supabase error:', error)
+        throw error
+      }
+
+      if (data && data[0]) {
+        setActiveDataSetId(data[0].id)
+        alert(`Successfully uploaded ${records.length} records from ${selectedFile.name}`)
+        loadDataSets()
+      }
+      setSelectedFile(null)
+      const inputElement = document.getElementById('csv-input') as HTMLInputElement
+      if (inputElement) inputElement.value = ''
+    } catch (error) {
+      console.error('Error uploading CSV:', error)
+      alert(`Failed to upload CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+    setUploading(false)
+  }
+
+  const handleSetActive = async (dataSetId: string) => {
+    try {
+      // Deactivate all data sets for this game
+      await supabase
+        .from('customer_data_sets')
+        .update({ is_active: false })
+        .eq('game_id', gameId)
+
+      // Activate selected data set
+      await supabase
+        .from('customer_data_sets')
+        .update({ is_active: true })
+        .eq('id', dataSetId)
+
+      setActiveDataSetId(dataSetId)
+      loadDataSets()
+    } catch (error) {
+      console.error('Error setting active data set:', error)
+    }
+  }
+
+  const handleDownload = async (dataSet: CustomerDataSet) => {
+    try {
+      const { data, error } = await supabase
+        .from('customer_data_sets')
+        .select('csv_data')
+        .eq('id', dataSet.id)
+        .single()
+
+      if (error) throw error
+
+      const csvContent = data.csv_data
+      const csvString = JSON.stringify(csvContent, null, 2)
+      const blob = new Blob([csvString], { type: 'text/plain' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = dataSet.file_name
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error downloading file:', error)
+    }
+  }
+
+  const handleDeleteDataSet = async (dataSetId: string) => {
+    if (!confirm('Delete this customer data set?')) return
+
+    try {
+      await supabase
+        .from('customer_data_sets')
+        .delete()
+        .eq('id', dataSetId)
+
+      loadDataSets()
+    } catch (error) {
+      console.error('Error deleting data set:', error)
+    }
+  }
+
+  const handleStartEdit = (dataSet: CustomerDataSet) => {
+    setEditingId(dataSet.id)
+    setEditingName(dataSet.file_name)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditingName('')
+  }
+
+  const handleSaveEdit = async (dataSetId: string) => {
+    if (!editingName.trim()) {
+      alert('Name cannot be empty')
+      return
+    }
+
+    try {
+      await supabase
+        .from('customer_data_sets')
+        .update({ file_name: editingName })
+        .eq('id', dataSetId)
+
+      loadDataSets()
+      setEditingId(null)
+      setEditingName('')
+    } catch (error) {
+      console.error('Error renaming data set:', error)
+      alert('Failed to rename data set')
+    }
   }
 
   if (loading) {
-    return <div className="p-4">Loading customers...</div>
+    return <div className="p-4">Loading customer data sets...</div>
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h3 className="text-lg font-serif font-bold">Customer Database ({customers.length})</h3>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="btn-primary"
-        >
-          {showAddForm ? 'Cancel' : 'Add Customer'}
-        </button>
+      {/* CSV Upload Section */}
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-lg font-serif font-bold mb-4">Upload Customer Data (CSV)</h3>
+        <form onSubmit={handleUploadCSV} className="space-y-4">
+          <div className="flex items-center gap-4">
+            <input
+              id="csv-input"
+              type="file"
+              accept=".csv"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => document.getElementById('csv-input')?.click()}
+              className="btn-secondary"
+            >
+              Choose CSV File
+            </button>
+            <span className="text-sm text-muted-foreground flex-1">
+              {selectedFile ? selectedFile.name : 'No file selected'}
+            </span>
+            <button
+              type="submit"
+              disabled={!selectedFile || uploading}
+              className="btn-primary disabled:opacity-50"
+            >
+              {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+          </div>
+        </form>
       </div>
 
-      {showAddForm && (
-        <div className="bg-card border border-border rounded-lg p-6">
-          <form onSubmit={handleAddCustomer} className="grid grid-cols-3 gap-4">
-            <input
-              type="text"
-              placeholder="Customer id"
-              value={formData.customer_id}
-              onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-              className="px-4 py-2 border border-border rounded-lg bg-input"
-              required
-            />
-            <input
-              type="number"
-              placeholder="Monthly Income"
-              value={formData.monthly_income}
-              onChange={(e) => setFormData({ ...formData, monthly_income: Number(e.target.value) })}
-              className="px-4 py-2 border border-border rounded-lg bg-input"
-            />
-            <input
-              type="number"
-              placeholder="Food Spending"
-              value={formData.monthly_food_spending}
-              onChange={(e) => setFormData({ ...formData, monthly_food_spending: Number(e.target.value) })}
-              className="px-4 py-2 border border-border rounded-lg bg-input"
-            />
-            <input
-              type="number"
-              placeholder="Working Hours"
-              value={formData.working_hours}
-              onChange={(e) => setFormData({ ...formData, working_hours: Number(e.target.value) })}
-              className="px-4 py-2 border border-border rounded-lg bg-input"
-            />
-            <input
-              type="number"
-              min="0"
-              max="10"
-              placeholder="Health Consciousness"
-              value={formData.health_consciousness}
-              onChange={(e) => setFormData({ ...formData, health_consciousness: Number(e.target.value) })}
-              className="px-4 py-2 border border-border rounded-lg bg-input"
-            />
-            <button type="submit" className="btn-primary">
-              Add Customer
-            </button>
-          </form>
-        </div>
-      )}
-
-      <div className="bg-card border border-border rounded-lg p-6 overflow-x-auto">
-        <table className="w-full text-sm table-auto">
-          <thead className="border-b border-border">
-            <tr className="text-muted-foreground">
-              <th className="text-center py-2">ID</th>
-              <th className="text-center py-2">Name</th>
-              <th className="text-center py-2">Gender</th>
-              <th className="text-center py-2">Job</th>
-              <th className="text-center py-2">Monthly Income</th>
-              <th className="text-center py-2">Income Segment</th>
-              <th className="text-center py-2">Monthly Food Spending</th>
-              <th className="text-center py-2">Spending Segment</th>
-              <th className="text-center py-2">Working Hours/Week</th>
-              <th className="text-center py-2">Dietary Preference</th>
-              <th className="text-center py-2">Health Consciousness</th>
-              <th className="text-center py-2">Health Segment</th>
-              <th className="text-center py-2">Interest in Experimental Food</th>
-              <th className="text-center py-2">Experimental Segment</th>
-              <th className="text-center py-2">Sustainability Preference</th>
-              <th className="text-center py-2">Sustainability Segment</th>
-              <th className="text-center py-2">Brand Loyalty</th>
-              <th className="text-center py-2">Loyalty Segment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((customer) => (
-              <tr key={customer.id} className="border-b border-border hover:bg-secondary/50">
-                <td className="text-center py-3">{customer.customer_id}</td>
-                <td className="text-center py-3">{customer.name}</td>
-                <td className="text-center py-3">{customer.gender}</td>
-                <td className="text-center py-3">{customer.job}</td>
-                <td className="text-center py-3">${customer.monthly_income}</td>
-                <td className="text-center py-3">{customer.income_segment}</td>
-                <td className="text-center py-3">${customer.monthly_food_spending}</td>
-                <td className="text-center py-3">{customer.spending_segment}</td>
-                <td className="text-center py-3">{customer.working_hours_per_week}</td>
-                <td className="text-center py-3">{customer.dietary_preference}</td>
-                <td className="text-center py-3">{customer.health_consciousness}/10</td>
-                <td className="text-center py-3">{customer.health_segment}</td>
-                <td className="text-center py-3">{customer.interest_in_experimental_food}/10</td>
-                <td className="text-center py-3">{customer.experimental_segment}</td>
-                <td className="text-center py-3">{customer.sustainability_preference}/10</td>
-                <td className="text-center py-3">{customer.sustainability_segment}</td>
-                <td className="text-center py-3">{customer.brand_loyalty}/10</td>
-                <td className="text-center py-3">{customer.loyalty_segment}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-lg font-serif font-bold mb-4">Customer Data Sets</h3>
+        {dataSets.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">No customer data sets uploaded yet</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border">
+                <tr className="text-muted-foreground">
+                  <th className="text-left py-2 px-4 w-80">File Name</th>
+                  <th className="text-left py-2 px-4">Records</th>
+                  <th className="text-left py-2 px-4">Uploaded Date</th>
+                  <th className="text-left py-2 px-4">Status</th>
+                  <th className="text-center py-2 px-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataSets.map((dataSet) => (
+                  <tr key={dataSet.id} className={`border-b border-border hover:bg-secondary/30 ${dataSet.is_active ? 'bg-green-500/5' : ''}`}>
+                    <td className="py-3 px-4 w-80 overflow-hidden">
+                      {editingId === dataSet.id ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            className="w-full px-3 py-1 border border-border rounded-lg bg-input text-sm"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleSaveEdit(dataSet.id)}
+                              className="btn-primary text-xs px-3 py-1"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              className="btn-secondary text-xs px-3 py-1"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between w-80 pr-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate">{dataSet.file_name}</p>
+                              <button
+                                onClick={() => handleStartEdit(dataSet)}
+                                className="px-1.5 py-1 text-blue-600 hover:text-blue-700 hover:bg-blue-500/10 rounded transition shrink-0"
+                                title="Edit name"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">ID: {dataSet.id.substring(0, 8)}...</p>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">{dataSet.record_count}</td>
+                    <td className="py-3 px-4">{new Date(dataSet.uploaded_at).toLocaleDateString()}</td>
+                    <td className="py-3 px-4">
+                      {dataSet.is_active ? (
+                        <span className="px-2 py-1 bg-green-500/20 text-green-600 text-xs rounded font-semibold">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 bg-gray-500/20 text-gray-600 text-xs rounded">
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center space-x-2 flex justify-center">
+                      <button
+                        onClick={() => handleDownload(dataSet)}
+                        className="btn-secondary text-xs"
+                        title="Download CSV"
+                      >
+                        Download
+                      </button>
+                      <button
+                        onClick={() => handleSetActive(dataSet.id)}
+                        className="btn-secondary text-xs"
+                        disabled={dataSet.is_active}
+                        title="Set as Active"
+                      >
+                        Set Active
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDataSet(dataSet.id)}
+                        className="text-red-600 hover:text-red-700 text-lg"
+                        title="Delete"
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
