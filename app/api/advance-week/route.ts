@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     // Fetch game settings for R&D tier configuration, investment config, and admin-set values
     const { data: gameSettingsData, error: settingsDataError } = await supabase
       .from('game_settings')
-      .select('rnd_tier_config, investment_config, population_size, analytics_cost, base_operating_cost')
+      .select('rnd_tier_config, investment_config, population_size, analytics_cost, base_operating_cost, initial_capital')
       .eq('game_id', gameId)
       .single()
 
@@ -127,6 +127,7 @@ export async function POST(request: NextRequest) {
     const populationSize = gameSettingsData?.population_size || 10000
     const costPerAnalytics = gameSettingsData?.analytics_cost || 5000
     const baseOperatingCost = gameSettingsData?.base_operating_cost || 20000
+    const initialCapital = gameSettingsData?.initial_capital || 0
 
     console.log('⚙️ ============================================')
     console.log('⚙️ GAME CONFIGURATION LOADED')
@@ -393,12 +394,12 @@ export async function POST(request: NextRequest) {
 
             // Now compute combined results: pick the highest multiplier among successful tests,
             // sum the costs, success if any test succeeded, and choose the probability from the run that succeeded first.
-            const combinedSuccess = firstTest.success || (secondTest?.success || false)
+            let combinedSuccess = firstTest.success || (secondTest?.success || false)
             let combinedMultiplier = firstTest.multiplier
             if (secondTest && secondTest.success && secondTest.multiplier > combinedMultiplier) {
               combinedMultiplier = secondTest.multiplier
             }
-            const combinedCost = firstTest.cost + (secondTest ? secondTest.cost : 0)
+            let combinedCost = firstTest.cost + (secondTest ? secondTest.cost : 0)
             const successProbability = firstTest.success ? firstTest.successProbability : (secondTest ? secondTest.successProbability : firstTest.successProbability)
 
             // Recreate the same calculations the main engine does, but using the combined values
@@ -432,15 +433,45 @@ export async function POST(request: NextRequest) {
               price: calculationInput.set_price,
               calculation: `${demand} × ${calculationInput.set_price}`
             })
-            const revenue = calculateRevenue(demand, calculationInput.set_price)
+            let revenue = calculateRevenue(demand, calculationInput.set_price)
             console.log(`✅ Revenue Result: ฿${revenue.toLocaleString()}`)
             console.log(`💰 ==========================================`)
             const operatingCost = calculateOperatingCosts(demand, calculationInput.base_operating_cost || 20000)
             const analyticsCost = (calculationInput.analytics_quantity || 0) * (calculationInput.cost_per_analytics || 5000)
             const totalCosts = operatingCost + combinedCost + analyticsCost
-            let profit = revenue - totalCosts
-            if (calculationInput.bonus_multiplier_pending) {
-              profit = Math.round(profit * (calculationInput.bonus_multiplier_pending || 1))
+            
+            // Check if team has insufficient balance - if so, set everything to 0/fail
+            const currentBalance = team.total_balance || 0
+            const isInsufficient = totalCosts > currentBalance
+            
+            let profit: number
+            if (isInsufficient) {
+              console.log(`⚠️ Team ${team.team_name} has insufficient balance!`, {
+                totalCosts,
+                currentBalance,
+                deficit: totalCosts - currentBalance
+              })
+              console.log(`🔄 Team ${team.team_name} lost the round - setting revenue/demand to 0, R&D to fail`)
+              
+              // Set revenue and demand to 0 (even if price is ok)
+              revenue = 0
+              demand = 0
+              
+              // Set R&D to fail automatically (don't run R&D if insufficient balance)
+              combinedSuccess = false
+              combinedMultiplier = 1.0
+              combinedCost = 0 // No R&D cost if insufficient
+              firstTest = null
+              secondTest = null
+              
+              // Set profit to negative (loss)
+              profit = -totalCosts
+            } else {
+              let profitCalc = revenue - totalCosts
+              if (calculationInput.bonus_multiplier_pending) {
+                profitCalc = Math.round(profitCalc * (calculationInput.bonus_multiplier_pending || 1))
+              }
+              profit = profitCalc
             }
 
             // Determine funding pass/fail using total successful tests -> include combined success
@@ -460,27 +491,61 @@ export async function POST(request: NextRequest) {
               rnd_cost: combinedCost,
               analytics_cost: analyticsCost,
               total_costs: totalCosts,
-              profit: Math.max(-10000, profit),
-              rnd_tested: true,
+              profit: isInsufficient ? profit : Math.max(-10000, profit),
+              rnd_tested: !isInsufficient && weeklyResult.rnd_tier ? true : false,
               rnd_success: combinedSuccess,
-              pass_fail_status: passFail,
-              bonus,
-              rnd_success_probability: successProbability * 100,
-              rnd_multiplier: combinedMultiplier,
-              next_funding_stage: nextStage,
-              funding_advanced: qualifiesForNextStage,
-              bonus_multiplier_applied: calculationInput.bonus_multiplier_pending || null,
+              pass_fail_status: isInsufficient ? 'fail' : passFail,
+              bonus: isInsufficient ? 0 : bonus,
+              rnd_success_probability: isInsufficient ? undefined : (successProbability * 100),
+              rnd_multiplier: isInsufficient ? undefined : combinedMultiplier,
+              next_funding_stage: isInsufficient ? 'Pre-Seed' : nextStage,
+              funding_advanced: false, // Never advance if insufficient
+              bonus_multiplier_applied: isInsufficient ? null : (calculationInput.bonus_multiplier_pending || null),
             }
 
             // Note: rnd_tests table updates are handled later in the code (after weekly_results update)
           } else {
-            // Single R&D test path (existing behavior)
+            // Single R&D test path
+            // Check if team has insufficient balance first
+            const currentBalance = team.total_balance || 0
+            const estimatedCosts = baseOperatingCost + (calculationInput.rnd_tier ? (rndTierConfig?.[calculationInput.rnd_tier as keyof typeof rndTierConfig]?.min_cost || 0) : 0) + (calculationInput.analytics_quantity || 0) * costPerAnalytics
+            const isInsufficient = estimatedCosts > currentBalance
+            
+            if (isInsufficient) {
+              console.log(`⚠️ Team ${team.team_name} has insufficient balance for single R&D!`, {
+                estimatedCosts,
+                currentBalance,
+                deficit: estimatedCosts - currentBalance
+              })
+              console.log(`🔄 Team ${team.team_name} lost the round - setting revenue/demand to 0, R&D to fail`)
+              
+              // Set R&D to fail automatically (don't run R&D if insufficient balance)
+              calculationInput.rnd_tier = undefined // Don't run R&D
+            }
+            
             results = calculateWeeklyResults(calculationInput)
+            
+            // Override results if insufficient
+            if (isInsufficient) {
+              results.demand = 0
+              results.revenue = 0
+              results.rnd_tested = false
+              results.rnd_success = false
+              results.rnd_cost = 0
+              results.pass_fail_status = 'fail'
+              results.bonus = 0
+              results.rnd_success_probability = undefined
+              results.rnd_multiplier = undefined
+              results.next_funding_stage = 'Pre-Seed'
+              results.funding_advanced = false
+              results.bonus_multiplier_applied = null
+            }
+            
             // Record first test output so we can update rnd_tests history to match engine
             firstTest = {
-              success: results.rnd_success,
-              multiplier: results.rnd_multiplier,
-              cost: results.rnd_cost,
+              success: results.rnd_success || false,
+              multiplier: results.rnd_multiplier || 1.0,
+              cost: results.rnd_cost || 0,
               successProbability: results.rnd_success_probability
             }
           }
@@ -599,39 +664,73 @@ export async function POST(request: NextRequest) {
             console.error('❌ Error updating rnd_tests:', err)
           }
         
-        // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier
-        const newBalance = (team.total_balance || 0) + results.profit
-        // Count how many R&D tests were successful this week (supports two-test strategies)
-        let successIncrement = 0
-        if (weeklyResult.rnd_tier_2) {
-          const firstSuccess = firstTest?.success ?? results.rnd_success
-          // For "two-if-fail" strategy: only count second test if it was actually run (i.e., first test failed)
-          // For "two-always" strategy: always count second test if it exists
-          let secondSuccess = false
-          if (weeklyResult.rnd_strategy === 'two-always' && secondTest) {
-            // For "two-always", second test is always run, so count it
-            secondSuccess = secondTest.success
-          } else if (weeklyResult.rnd_strategy === 'two-if-fail' && secondTest && !firstTest.success) {
-            // For "two-if-fail", only count second test if first failed and second was run
-            secondSuccess = secondTest.success
-          }
-          // If strategy is "two-if-fail" and first test passed, secondSuccess remains false (correct behavior)
-          successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
-          
-          console.log(`📊 Success increment calculation:`, {
-            strategy: weeklyResult.rnd_strategy,
-            firstSuccess,
-            secondSuccess,
-            secondTestExists: !!secondTest,
-            firstTestPassed: firstTest?.success,
-            successIncrement
+        // Check if team has insufficient balance - if so, reset to initial stage
+        const currentBalance = team.total_balance || 0
+        const isInsufficient = results.total_costs > currentBalance
+        
+        let newBalance: number
+        let newSuccessfulTests: number
+        let newFundingStage: string
+        
+        if (isInsufficient) {
+          console.log(`⚠️ Team ${team.team_name} has insufficient balance!`, {
+            totalCosts: results.total_costs,
+            currentBalance,
+            deficit: results.total_costs - currentBalance
           })
+          console.log(`🔄 Resetting team ${team.team_name} to initial stage (Pre-Seed, balance ${initialCapital}, R&D tests 0)`)
+          
+          // Reset team to initial stage - use initial_capital from admin settings
+          newBalance = initialCapital
+          newSuccessfulTests = 0
+          newFundingStage = 'Pre-Seed'
+          
+          // Set R&D tests to fail (don't run R&D if insufficient balance)
+          if (firstTest) {
+            firstTest.success = false
+            firstTest.multiplier = 1.0
+          }
+          if (secondTest) {
+            secondTest.success = false
+            secondTest.multiplier = 1.0
+          }
         } else {
-          successIncrement = results.rnd_success ? 1 : 0
+          // Normal calculation
+          newBalance = currentBalance + results.profit
+          // Count how many R&D tests were successful this week (supports two-test strategies)
+          let successIncrement = 0
+          if (weeklyResult.rnd_tier_2) {
+            const firstSuccess = firstTest?.success ?? results.rnd_success
+            // For "two-if-fail" strategy: only count second test if it was actually run (i.e., first test failed)
+            // For "two-always" strategy: always count second test if it exists
+            let secondSuccess = false
+            if (weeklyResult.rnd_strategy === 'two-always' && secondTest) {
+              // For "two-always", second test is always run, so count it
+              secondSuccess = secondTest.success
+            } else if (weeklyResult.rnd_strategy === 'two-if-fail' && secondTest && !firstTest.success) {
+              // For "two-if-fail", only count second test if first failed and second was run
+              secondSuccess = secondTest.success
+            }
+            // If strategy is "two-if-fail" and first test passed, secondSuccess remains false (correct behavior)
+            successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
+            
+            console.log(`📊 Success increment calculation:`, {
+              strategy: weeklyResult.rnd_strategy,
+              firstSuccess,
+              secondSuccess,
+              secondTestExists: !!secondTest,
+              firstTestPassed: firstTest?.success,
+              successIncrement
+            })
+          } else {
+            successIncrement = results.rnd_success ? 1 : 0
+          }
+          
+          newSuccessfulTests = (team.successful_rnd_tests || 0) + successIncrement
+          newFundingStage = results.next_funding_stage || team.funding_stage || 'Pre-Seed'
         }
-
-        const newSuccessfulTests = (team.successful_rnd_tests || 0) + successIncrement
-        const newFundingStage = results.next_funding_stage || team.funding_stage || 'Pre-Seed'
+        
+        // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier
         
         // Track milestone advancements for balance calculation
         if (results.funding_advanced && newFundingStage && newFundingStage !== team.funding_stage) {
@@ -648,8 +747,10 @@ export async function POST(request: NextRequest) {
         console.log('🔔 R&D test summary for team:', team.team_name, {
           firstTest: firstTest ? { success: firstTest.success, cost: firstTest.cost, multiplier: firstTest.multiplier } : null,
           secondTest: secondTest ? { success: secondTest.success, cost: secondTest.cost, multiplier: secondTest.multiplier } : null,
-          successIncrement,
-          newSuccessfulTests
+          isInsufficient,
+          newSuccessfulTests,
+          newBalance,
+          newFundingStage
         })
 
         const updateResult = await supabase

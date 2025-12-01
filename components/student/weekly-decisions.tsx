@@ -10,6 +10,8 @@ interface TeamData {
   assigned_product_id?: string
   assigned_product_name?: string | null
   total_balance: number
+  successful_rnd_tests?: number
+  funding_stage?: string
 }
 
 interface GameSettings {
@@ -17,6 +19,7 @@ interface GameSettings {
   total_weeks: number
   cost_per_analytics?: number
   rnd_tier_config?: any
+  initial_capital?: number
 }
 
 interface WeeklyDecisionsProps {
@@ -215,10 +218,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       }
     }
 
-    if (totalCosts > team.total_balance) {
-      alert(`Insufficient balance! Total costs (฿${totalCosts.toLocaleString()}) exceed your balance (฿${team.total_balance.toLocaleString()}). Please adjust your decisions.`)
-      return
-    }
+    // Note: Insufficient balance will be handled during advance-week
+    // Students can submit normally, but results will be processed when admin advances the week
 
     setLoading(true)
     
@@ -540,7 +541,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* R&D Investment */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-sm">
           <h3 className="font-['Poppins'] text-xl font-bold text-black mb-1 flex items-center gap-2">
@@ -557,27 +558,28 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               : 'Click to add more R&D tiers or use X to remove'}
           </p>
 
-          {/* R&D Queue Display */}
+          {/* R&D Queue Display - Compact Chip Style */}
           {rndSelections.length > 0 && (
-            <div className="mb-4 p-4 bg-[#FFF5F5] border-2 border-[#E63946] rounded-xl">
-              <div className="font-semibold text-sm text-gray-700 mb-3">Selected R&D Tests:</div>
-              <div className="space-y-2">
+            <div className="mb-4">
+              <div className="font-semibold text-sm text-gray-700 mb-2">Selected R&D Tests:</div>
+              <div className="flex flex-wrap gap-2">
                 {rndSelections.map((sel, idx) => {
                   const tier = rndTiers.find(t => t.tier === sel.tier)
                   return (
-                    <div key={sel.id} className="flex items-center justify-between bg-white p-3 rounded-lg border-2 border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <span className="bg-[#E63946] text-white w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs">
-                          {idx + 1}
-                        </span>
-                        <span className="font-['Poppins'] font-bold text-black">{tier?.label}</span>
-                      </div>
+                    <div
+                      key={sel.id}
+                      className="inline-flex items-center gap-2 bg-[#E63946] text-white px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm"
+                    >
+                      <span className="bg-white/20 text-white w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs">
+                        {idx + 1}
+                      </span>
+                      <span>{tier?.label}</span>
                       <button
                         onClick={() => removeRDFromQueue(sel.id)}
-                        className="text-[#E63946] hover:bg-[#FFE5E7] px-3 py-1 rounded-lg font-bold text-lg transition-all"
+                        className="ml-1 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center transition-all text-white font-bold"
                         title="Remove this R&D selection"
                       >
-                        ✕
+                        ×
                       </button>
                     </div>
                   )
@@ -587,7 +589,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           )}
 
           {/* Available R&D Tiers to Add */}
-          <div className="space-y-3 max-h-[500px] overflow-y-auto">
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
             {rndTiers.map((tier) => {
               const isDisabled = hasSubmitted || !rndStrategy || rndStrategy === 'skip' || rndSelections.length >= (RND_STRATEGIES.find(s => s.id === rndStrategy)?.maxTests || 0)
               
@@ -600,7 +602,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                     }
                   }}
                   disabled={isDisabled}
-                  className={`w-full text-left p-5 rounded-xl border-2 transition-all relative ${
+                  className={`shrink-0 w-[280px] text-left p-5 rounded-xl border-2 transition-all relative ${
                     isDisabled
                       ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
                       : 'bg-white border-gray-200 hover:border-[#E63946] hover:shadow-md hover:-translate-y-0.5 cursor-pointer'
@@ -631,7 +633,9 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             })}
           </div>
         </div>
+      </div>
 
+      <div className="grid grid-cols-1 gap-6">
         {/* Analytics & Summary */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-sm">
           <h3 className="font-['Poppins'] text-xl font-bold text-black mb-1 flex items-center gap-2">
@@ -666,40 +670,6 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Enter quantity"
                 />
-                <span className="text-sm text-gray-600 font-medium whitespace-nowrap">Cost: ฿{(costPerAnalytics * analyticsQuantityNum).toLocaleString()}</span>
-              </div>
-            </div>
-
-            <div className="bg-linear-to-br from-[#F5F5F5] to-[#E8D5D0] p-6 rounded-2xl border-2 border-gray-200">
-              <h4 className="font-['Poppins'] font-bold text-base text-black mb-4">Cost Summary</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between text-[15px]">
-                  <span className="text-gray-600 font-medium">Base Operating Costs:</span>
-                  <span className="font-semibold">฿20,000</span>
-                </div>
-                {rndSelections.length > 0 && (
-                  <div className="flex justify-between text-[15px]">
-                    <span className="text-gray-600 font-medium">R&D Tests ({rndSelections.length}) (avg):</span>
-                    <span className="font-semibold">฿{Math.round(rdCost).toLocaleString()}</span>
-                  </div>
-                )}
-                {analyticsQuantityNum > 0 && (
-                  <div className="flex justify-between text-[15px]">
-                    <span className="text-gray-600 font-medium">Analytics Tools:</span>
-                    <span className="font-semibold">฿{(costPerAnalytics * analyticsQuantityNum).toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="border-t-2 border-gray-200 pt-3 flex justify-between font-bold">
-                  <span>Total Costs:</span>
-                  <span className={totalCosts > team.total_balance ? 'text-red-600' : ''}>฿{totalCosts.toLocaleString()}</span>
-                </div>
-                {totalCosts > team.total_balance && (
-                  <div className="mt-3 p-3 bg-red-50 border-2 border-red-300 rounded-lg">
-                    <p className="text-sm text-red-700 font-semibold">
-                       Insufficient Balance! 
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -709,13 +679,11 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       <div className="flex gap-4">
         <button
           onClick={() => setShowConfirmation(true)}
-          disabled={hasSubmitted || totalCosts > team.total_balance}
+          disabled={hasSubmitted}
           className="flex-1 py-4 px-6 bg-linear-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-['Poppins'] font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#E63946]/40 shadow-lg shadow-[#E63946]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
           {hasSubmitted 
             ? 'Already Submitted' 
-            : totalCosts > team.total_balance 
-            ? 'Insufficient Balance' 
             : 'Submit Weekly Decisions'}
         </button>
       </div>

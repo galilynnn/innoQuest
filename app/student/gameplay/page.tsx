@@ -28,6 +28,7 @@ interface GameSettings {
   game_status: string
   cost_per_analytics?: number
   rnd_tier_config?: any
+  initial_capital?: number
   week_duration_minutes?: number
   week_start_time?: string
 }
@@ -41,6 +42,8 @@ export default function StudentGameplay() {
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
   const [displayRevenue, setDisplayRevenue] = useState<number>(0)
   const [displayDemand, setDisplayDemand] = useState<number>(0)
+  const [lastSeenWeek, setLastSeenWeek] = useState<number>(0)
+  const [lostRound, setLostRound] = useState<boolean>(false)
 
   // Load initial data once
   useEffect(() => {
@@ -162,6 +165,7 @@ export default function StudentGameplay() {
             game_status: settingsData.game_status,
             cost_per_analytics: settingsData.analytics_cost || 5000,
             rnd_tier_config: settingsData.rnd_tier_config,
+            initial_capital: settingsData.initial_capital || 0,
             week_duration_minutes: settingsData.week_duration_minutes || 5,
             week_start_time: settingsData.week_start_time
           })
@@ -230,8 +234,37 @@ export default function StudentGameplay() {
       setDisplayDemand(demand)
     }
 
+    // Check if new round started
+    if (gameSettings.current_week > lastSeenWeek && lastSeenWeek > 0) {
+      alert(`🎯 NEW ROUND STARTED!\n\nWeek ${gameSettings.current_week} has begun. Make your decisions for this round!`)
+    }
+    
+    // Check if team lost the previous round
+    const checkLostRound = async () => {
+      if (gameSettings.current_week > 1) {
+        const previousWeek = gameSettings.current_week - 1
+        const { data: previousWeekResult } = await supabase
+          .from('weekly_results')
+          .select('revenue, demand, pass_fail_status')
+          .eq('team_id', team.team_id)
+          .eq('week_number', previousWeek)
+          .single()
+        
+        // Check if lost round: revenue = 0, demand = 0, and pass_fail_status = 'fail'
+        if (previousWeekResult && previousWeekResult.revenue === 0 && previousWeekResult.demand === 0 && previousWeekResult.pass_fail_status === 'fail') {
+          setLostRound(true)
+        } else {
+          setLostRound(false)
+        }
+      } else {
+        setLostRound(false)
+      }
+    }
+    
+    checkLostRound()
+    setLastSeenWeek(gameSettings.current_week)
     refreshRevenueAndDemand()
-  }, [team, gameSettings, supabase])
+  }, [team, gameSettings, supabase, lastSeenWeek])
 
   // Set up realtime subscriptions separately, only after team and gameSettings are loaded
   useEffect(() => {
@@ -258,6 +291,12 @@ export default function StudentGameplay() {
             window.location.href = '/student/result'
           } else if (newSettings.current_week !== gameSettings.current_week || newSettings.week_start_time !== gameSettings.week_start_time) {
             console.log(`Week changed from ${gameSettings.current_week} to ${newSettings.current_week} or timer reset`)
+            
+            // Show alert when new round starts
+            if (newSettings.current_week > gameSettings.current_week) {
+              alert(`🎯 NEW ROUND STARTED!\n\nWeek ${newSettings.current_week} has begun. Make your decisions for this round!`)
+            }
+            
             window.location.reload()
           }
         }
@@ -396,6 +435,30 @@ export default function StudentGameplay() {
                   </div>
                   <div className="text-right text-xs text-orange-700">
                     {timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Lost Round Alert */}
+            {lostRound && (
+              <div className="mb-6 bg-red-50 border-2 border-red-300 rounded-xl p-6 shadow-lg">
+                <div className="flex items-start gap-4">
+                  <div className="text-4xl">❌</div>
+                  <div className="flex-1">
+                    <h3 className="font-['Poppins'] text-xl font-bold text-red-800 mb-2">You Lost the Previous Round!</h3>
+                    <p className="text-red-700 mb-3">
+                      Your team had insufficient balance to cover the costs. As a result:
+                    </p>
+                    <ul className="list-disc list-inside text-red-700 space-y-1 mb-3">
+                      <li>Revenue and Demand were set to 0 for that round</li>
+                      <li>All R&D tests were automatically failed</li>
+                      <li>Your team has been reset to the initial stage (Pre-Seed)</li>
+                      <li>Balance has been reset to initial capital</li>
+                    </ul>
+                    <p className="text-red-800 font-semibold">
+                      You can now make decisions for the new round and rebuild from the beginning.
+                    </p>
                   </div>
                 </div>
               </div>
