@@ -262,18 +262,30 @@ export async function POST(request: NextRequest) {
         
         if (probabilities && probabilities.length > 0) {
           // Calculate average - this will be 0 if all probabilities are 0 (high price scenario)
+          // IMPORTANT: purchase_probability is stored as percentage (0-100) in database
           const sum = probabilities.reduce((acc, p) => acc + (p.purchase_probability || 0), 0)
           avgPurchaseProbability = sum / probabilities.length
+          
+          // Debug: Check if all probabilities are the same (which would indicate a calculation issue)
+          const uniqueProbabilities = [...new Set(probabilities.map(p => p.purchase_probability || 0))]
+          const allSame = uniqueProbabilities.length === 1
           
           console.log(`✅ Calculated avg purchase probability for ${team.team_name}:`, {
             count: probabilities.length,
             avgProbability: avgPurchaseProbability,
             minProbability: Math.min(...probabilities.map(p => p.purchase_probability || 0)),
             maxProbability: Math.max(...probabilities.map(p => p.purchase_probability || 0)),
+            uniqueValues: uniqueProbabilities.length,
+            allSame: allSame,
+            sampleValues: probabilities.slice(0, 10).map(p => p.purchase_probability),
             productUUID: team.assigned_product_id,
             price_used: weeklyResult.set_price,
             note: avgPurchaseProbability === 0 
               ? '⚠️ All probabilities are 0 (likely due to very high price). Demand will be 0.'
+              : avgPurchaseProbability === 100
+              ? '⚠️ All probabilities are 100% (unusual - check calculation). Demand will be 10,000.'
+              : allSame
+              ? '⚠️ All probabilities are identical (may indicate calculation issue)'
               : 'Probabilities calculated successfully.'
           })
         } else {

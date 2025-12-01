@@ -156,6 +156,20 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
             </thead>
             <tbody>
               {results.flatMap((result) => {
+                // Only show R&D test results for weeks that have been advanced
+                // A week is considered advanced if:
+                // 1. week_number < current_week (week has passed), OR
+                // 2. revenue and demand are calculated (not null/undefined)
+                // This ensures results only show after admin advances the week
+                const weekAdvanced = 
+                  (gameSettings.current_week && result.week_number < gameSettings.current_week) ||
+                  (result.revenue != null && result.demand != null)
+                
+                if (!weekAdvanced) {
+                  // Week hasn't been advanced yet, don't show R&D test results
+                  return []
+                }
+                
                 // For "two-if-fail" strategy: check if we need to include second test
                 let tests = result.rnd_tests && result.rnd_tests.length > 0 ? result.rnd_tests : []
                 

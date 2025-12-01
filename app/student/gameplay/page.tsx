@@ -39,7 +39,8 @@ export default function StudentGameplay() {
   const [gameSettings, setGameSettings] = useState<GameSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
-  const [totalRevenue, setTotalRevenue] = useState<number>(0)
+  const [displayRevenue, setDisplayRevenue] = useState<number>(0)
+  const [displayDemand, setDisplayDemand] = useState<number>(0)
 
   // Load initial data once
   useEffect(() => {
@@ -105,15 +106,6 @@ export default function StudentGameplay() {
           funding_stage: teamData.funding_stage
         })
 
-        // Calculate total revenue from weekly results
-        const { data: weeklyResults } = await supabase
-          .from('weekly_results')
-          .select('revenue')
-          .eq('team_id', teamData.team_id)
-        
-        const revenue = weeklyResults?.reduce((sum, r) => sum + (r.revenue || 0), 0) || 0
-        setTotalRevenue(revenue)
-
         // Load game settings
         console.log('🔍 Querying game_settings for game_id:', teamData.game_id)
         const { data: settingsData, error: settingsError } = await supabase
@@ -121,6 +113,29 @@ export default function StudentGameplay() {
           .select('*')
           .eq('game_id', teamData.game_id)
           .single()
+
+        // Get revenue and demand from the previous week (current_week - 1)
+        // Round 1 (week 1) shows 0, Round 2 (week 2) shows week 1 results, etc.
+        let revenue = 0
+        let demand = 0
+        
+        if (settingsData && settingsData.current_week > 1) {
+          // Get results from previous week
+          const previousWeek = settingsData.current_week - 1
+          const { data: previousWeekResult } = await supabase
+            .from('weekly_results')
+            .select('revenue, demand')
+            .eq('team_id', teamData.team_id)
+            .eq('week_number', previousWeek)
+            .single()
+          
+          revenue = previousWeekResult?.revenue || 0
+          demand = previousWeekResult?.demand || 0
+        }
+        // If current_week = 1, revenue and demand remain 0
+        
+        setDisplayRevenue(revenue)
+        setDisplayDemand(demand)
 
         console.log('📊 Game settings query result:', { settingsData, settingsError })
 
@@ -187,6 +202,37 @@ export default function StudentGameplay() {
     return () => clearInterval(interval)
   }, [gameSettings?.week_start_time, gameSettings?.week_duration_minutes, gameSettings?.game_status])
 
+  // Refresh revenue and demand when current_week changes
+  useEffect(() => {
+    if (!team || !gameSettings) return
+
+    const refreshRevenueAndDemand = async () => {
+      // Get revenue and demand from the previous week (current_week - 1)
+      // Round 1 (week 1) shows 0, Round 2 (week 2) shows week 1 results, etc.
+      let revenue = 0
+      let demand = 0
+      
+      if (gameSettings.current_week > 1) {
+        const previousWeek = gameSettings.current_week - 1
+        const { data: previousWeekResult } = await supabase
+          .from('weekly_results')
+          .select('revenue, demand')
+          .eq('team_id', team.team_id)
+          .eq('week_number', previousWeek)
+          .single()
+        
+        revenue = previousWeekResult?.revenue || 0
+        demand = previousWeekResult?.demand || 0
+      }
+      // If current_week = 1, revenue and demand remain 0
+      
+      setDisplayRevenue(revenue)
+      setDisplayDemand(demand)
+    }
+
+    refreshRevenueAndDemand()
+  }, [team, gameSettings, supabase])
+
   // Set up realtime subscriptions separately, only after team and gameSettings are loaded
   useEffect(() => {
     if (!team || !gameSettings) return
@@ -234,16 +280,30 @@ export default function StudentGameplay() {
             funding_stage: updatedTeam.funding_stage
           } : null)
           
-          // Update revenue if weekly results changed
-          const updateRevenue = async () => {
-            const { data: weeklyResults } = await supabase
-              .from('weekly_results')
-              .select('revenue')
-              .eq('team_id', updatedTeam.team_id)
-            const revenue = weeklyResults?.reduce((sum, r) => sum + (r.revenue || 0), 0) || 0
-            setTotalRevenue(revenue)
+          // Update revenue and demand if weekly results changed
+          const updateRevenueAndDemand = async () => {
+            if (!gameSettings) return
+            
+            let revenue = 0
+            let demand = 0
+            
+            if (gameSettings.current_week > 1) {
+              const previousWeek = gameSettings.current_week - 1
+              const { data: previousWeekResult } = await supabase
+                .from('weekly_results')
+                .select('revenue, demand')
+                .eq('team_id', updatedTeam.team_id)
+                .eq('week_number', previousWeek)
+                .single()
+              
+              revenue = previousWeekResult?.revenue || 0
+              demand = previousWeekResult?.demand || 0
+            }
+            
+            setDisplayRevenue(revenue)
+            setDisplayDemand(demand)
           }
-          updateRevenue()
+          updateRevenueAndDemand()
         }
       )
       .subscribe()
@@ -341,11 +401,14 @@ export default function StudentGameplay() {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-4 gap-4 mb-8">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Demand</p>
+                <p className="text-3xl font-bold text-green-600">{displayDemand.toLocaleString()} pcs</p>
+              </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Revenue</p>
-                <p className="text-3xl font-bold text-blue-600">${totalRevenue.toLocaleString()}</p>
-                <p className="text-xs text-gray-500 mt-1">Total from all weeks</p>
+                <p className="text-3xl font-bold text-blue-600">฿{displayRevenue.toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Balance</p>
@@ -475,7 +538,6 @@ function DecisionHistory({ team }: { team: TeamData }) {
                 <th className="text-center py-3">Price Set</th>
                 <th className="text-center py-3">Revenue</th>
                 <th className="text-center py-3">R&D Tier</th>
-                <th className="text-center py-3">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -485,19 +547,6 @@ function DecisionHistory({ team }: { team: TeamData }) {
                   <td className="text-center">${result.set_price || 0}</td>
                   <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
                   <td className="text-center">{result.rnd_tier || '-'}</td>
-                  <td className="text-center">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        result.pass_fail_status === 'pass'
-                          ? 'bg-green-100 text-green-800'
-                          : result.pass_fail_status === 'fail'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-800'
-                      }`}
-                    >
-                      {result.pass_fail_status || 'Pending'}
-                    </span>
-                  </td>
                 </tr>
               ))}
             </tbody>

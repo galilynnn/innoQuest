@@ -1,9 +1,8 @@
 -- Update the purchase probability calculation function to use dynamic customer data
 -- Based on the active customer dataset with correct column mappings
 
--- First, ensure the customer_purchase_probabilities table has a probability column
-ALTER TABLE customer_purchase_probabilities 
-ADD COLUMN IF NOT EXISTS probability DECIMAL(10,4);
+-- Note: The table already has purchase_probability column from script 19
+-- No need to add a separate probability column
 
 -- Drop existing function
 DROP FUNCTION IF EXISTS calculate_purchase_probabilities(UUID, UUID, TEXT, DECIMAL);
@@ -82,6 +81,9 @@ BEGIN
         v_weight_experimental := COALESCE((v_weights->>'experimental_food')::DECIMAL(10,4), 0.2);
         v_weight_income := COALESCE((v_weights->>'income_sensitivity')::DECIMAL(10,4), 0.2);
     END IF;
+    
+    -- Store weight_income_sensitivity for INSERT (table column name)
+    -- Note: v_weight_income is used in calculation, weight_income_sensitivity is stored in table
     
     RAISE NOTICE 'Weights - Health: %, Sust: %, Brand: %, Exp: %, Income: %',
         v_weight_health, v_weight_sustainability, v_weight_brand_loyalty, 
@@ -187,19 +189,46 @@ BEGIN
         v_probability := GREATEST(0.0, LEAST(100.0, v_weighted_sum * 100.0 * v_price_adjustment));
         
         -- Insert calculated probability
+        -- Note: Using purchase_probability column (not probability) to match table schema
         INSERT INTO customer_purchase_probabilities (
             game_id,
             team_id,
             customer_data_set_id,
             customer_row_index,
             product_id,
-            probability
+            customer_health,
+            customer_sustainability,
+            customer_brand_loyalty,
+            customer_experimental,
+            customer_income,
+            weight_health,
+            weight_sustainability,
+            weight_brand_loyalty,
+            weight_experimental,
+            weight_income_sensitivity,
+            product_price,
+            income_normalized,
+            price_adjustment,
+            purchase_probability
         ) VALUES (
             p_game_id,
             p_team_id,
             v_customer_data_set_id,
             v_row_index,
             p_product_id,
+            v_health,
+            v_sustainability,
+            v_brand_loyalty,
+            v_experimental,
+            v_income,
+            v_weight_health,
+            v_weight_sustainability,
+            v_weight_brand_loyalty,
+            v_weight_experimental,
+            v_weight_income,  -- This maps to weight_income_sensitivity column in table
+            p_price,
+            v_income_normalized,
+            v_price_adjustment,
             v_probability
         );
         
