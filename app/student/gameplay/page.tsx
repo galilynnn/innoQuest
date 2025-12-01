@@ -259,34 +259,82 @@ export default function StudentGameplay() {
       }
     }
 
-    // Check if new round started
-    if (gameSettings.current_week > lastSeenWeek && lastSeenWeek > 0) {
-      alert(`🎯 NEW ROUND STARTED!\n\nWeek ${gameSettings.current_week} has begun. Make your decisions for this round!`)
-    }
-    
-    // Check if team lost the previous round
-    const checkLostRound = async () => {
+    // Check if team lost the previous round and show appropriate alerts
+    const checkAndShowAlerts = async () => {
+      let didLoseRound = false
+      
       if (gameSettings.current_week > 1) {
         const previousWeek = gameSettings.current_week - 1
-        const { data: previousWeekResult } = await supabase
+        
+        console.log(`🔍 Checking if team lost round. Team ID: ${team.team_id}, Previous week: ${previousWeek}, Current week: ${gameSettings.current_week}`)
+        
+        const { data: previousWeekResult, error } = await supabase
           .from('weekly_results')
-          .select('revenue, demand, pass_fail_status')
+          .select('revenue, demand, pass_fail_status, week_number')
           .eq('team_id', team.team_id)
           .eq('week_number', previousWeek)
           .maybeSingle()
         
+        // Only log actual errors (empty object means no data found, which is normal for first time)
+        if (error && Object.keys(error).length > 0) {
+          console.error('Error fetching previous week result:', error)
+        }
+        
+        console.log('📋 Previous week result:', previousWeekResult, 'Error:', error)
+        
         // Check if lost round: revenue = 0, demand = 0, and pass_fail_status = 'fail'
-        if (previousWeekResult && previousWeekResult.revenue === 0 && previousWeekResult.demand === 0 && previousWeekResult.pass_fail_status === 'fail') {
+        const lostThisRound = previousWeekResult && 
+          previousWeekResult.revenue === 0 && 
+          previousWeekResult.demand === 0 && 
+          previousWeekResult.pass_fail_status === 'fail'
+        
+        console.log('❓ Lost this round?', lostThisRound, {
+          hasResult: !!previousWeekResult,
+          revenue: previousWeekResult?.revenue,
+          demand: previousWeekResult?.demand,
+          status: previousWeekResult?.pass_fail_status
+        })
+        
+        if (lostThisRound) {
+          didLoseRound = true
           setLostRound(true)
+          
+          // Show alert when transitioning to a new week OR on first load of this week
+          const isNewWeek = gameSettings.current_week > lastSeenWeek && lastSeenWeek > 0
+          const isFirstLoadOfThisWeek = lastSeenWeek === 0 || lastSeenWeek < gameSettings.current_week
+          
+          if (isNewWeek || isFirstLoadOfThisWeek) {
+            console.log('🚨 Showing lost round alert! (isNewWeek:', isNewWeek, ', isFirstLoadOfThisWeek:', isFirstLoadOfThisWeek, ')')
+            alert(
+              `❌ YOU LOST THE PREVIOUS ROUND! ❌\n\n` +
+              `Your team had insufficient balance to cover costs.\n\n` +
+              `CONSEQUENCES:\n` +
+              `• Revenue and Demand set to 0\n` +
+              `• All R&D tests failed\n` +
+              `• Reset to Pre-Seed stage\n` +
+              `• Balance reset to initial capital\n\n` +
+              `Plan your budget carefully this round to avoid losing again!`
+            )
+          }
         } else {
           setLostRound(false)
         }
       } else {
         setLostRound(false)
       }
+      
+      // Then check if new round started (but only show "new round" alert if they didn't lose)
+      if (gameSettings.current_week > lastSeenWeek && lastSeenWeek > 0) {
+        if (!didLoseRound) {
+          console.log('🎯 Showing new round started alert')
+          alert(`🎯 NEW ROUND STARTED!\n\nWeek ${gameSettings.current_week} has begun. Make your decisions for this round!`)
+        }
+      }
     }
     
-    checkLostRound()
+    // Run the check and show alerts
+    checkAndShowAlerts()
+    
     setLastSeenWeek(gameSettings.current_week)
     refreshRevenueAndDemand()
   }, [team?.team_id, gameSettings?.current_week, supabase])
@@ -480,24 +528,33 @@ export default function StudentGameplay() {
 
             {/* Lost Round Alert */}
             {lostRound && (
-              <div className="mb-6 bg-red-50 border-2 border-red-300 rounded-xl p-6 shadow-lg">
+              <div className="mb-6 bg-red-50 border-4 border-red-500 rounded-xl p-6 shadow-2xl animate-pulse">
                 <div className="flex items-start gap-4">
-                  <div className="text-4xl">❌</div>
+                  <div className="text-5xl animate-bounce">❌</div>
                   <div className="flex-1">
-                    <h3 className="font-['Poppins'] text-xl font-bold text-red-800 mb-2">You Lost the Previous Round!</h3>
-                    <p className="text-red-700 mb-3">
+                    <h3 className="font-['Poppins'] text-2xl font-bold text-red-900 mb-3 uppercase">⚠️ You Lost the Previous Round! ⚠️</h3>
+                    <p className="text-red-800 font-semibold mb-3 text-lg">
                       Your team had insufficient balance to cover the costs. As a result:
                     </p>
-                    <ul className="list-disc list-inside text-red-700 space-y-1 mb-3">
-                      <li>Revenue and Demand were set to 0 for that round</li>
-                      <li>All R&D tests were automatically failed</li>
-                      <li>Your team has been reset to the initial stage (Pre-Seed)</li>
-                      <li>Balance has been reset to initial capital</li>
+                    <ul className="list-disc list-inside text-red-800 space-y-2 mb-4 text-base">
+                      <li><strong>Revenue and Demand were set to 0</strong> for that round</li>
+                      <li><strong>All R&D tests were automatically failed</strong></li>
+                      <li><strong>Your team has been reset to the initial stage (Pre-Seed)</strong></li>
+                      <li><strong>Balance has been reset to initial capital</strong></li>
                     </ul>
-                    <p className="text-red-800 font-semibold">
-                      You can now make decisions for the new round and rebuild from the beginning.
-                    </p>
+                    <div className="bg-red-100 border-2 border-red-600 rounded-lg p-4 mt-4">
+                      <p className="text-red-900 font-bold text-lg">
+                        💡 Important: Plan your budget carefully this round! Make sure you have enough balance to cover all costs (R&D, Analytics, Operating Costs) to avoid losing again.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    onClick={() => setLostRound(false)}
+                    className="text-red-500 hover:text-red-700 text-2xl font-bold"
+                    title="Dismiss alert"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
             )}

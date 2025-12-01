@@ -37,7 +37,6 @@ export default function ReportsTab({ teamId }: ReportsTabProps) {
   }
 
   const latestResult = team.history[team.history.length - 1]
-  const totalRevenue = team.history.reduce((sum, r) => sum + (r.revenue || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -66,10 +65,6 @@ export default function ReportsTab({ teamId }: ReportsTabProps) {
         <div className="space-y-4">
           <table className="w-full text-sm">
             <tbody className="space-y-2">
-              <tr className="border-b border-border">
-                <td className="py-2 text-gray-600">Total Revenue (All Weeks)</td>
-                <td className="py-2 text-right font-semibold text-gray-900">฿{totalRevenue.toLocaleString()}</td>
-              </tr>
               <tr className="font-semibold text-primary">
                 <td className="py-2">Current Cash Reserve</td>
                 <td className="py-2 text-right">฿{team.totalCash.toLocaleString()}</td>

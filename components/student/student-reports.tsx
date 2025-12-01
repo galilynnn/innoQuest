@@ -118,7 +118,6 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
   }
 
   // Calculate totals
-  const totalRevenue = results.reduce((sum, r) => sum + (r.revenue || 0), 0)
   const totalCost = results.reduce((sum, r) => sum + (r.costs || 0), 0)
   const successfulTests = results.filter((r) => r.rnd_success).length
 

@@ -32,6 +32,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [weeklyResults, setWeeklyResults] = useState<WeeklyResult[]>([])
   const [loading, setLoading] = useState(true)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
   useEffect(() => {
     loadTeams()
@@ -71,6 +72,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
 
       if (data) {
         setTeams(data as Team[])
+        setLastUpdated(new Date())
         if (data.length > 0) {
           // Update selectedTeam if it exists, otherwise select first team
           if (selectedTeam) {
@@ -173,7 +175,19 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
   return (
     <div className="grid grid-cols-3 gap-6">
       <div className="col-span-1">
-        <h3 className="text-lg font-serif font-bold mb-4">Teams Leaderboard</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-serif font-bold">Teams Leaderboard</h3>
+          <button
+            onClick={loadTeams}
+            className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md text-xs font-semibold transition-all"
+            title="Refresh team data"
+          >
+            🔄
+          </button>
+        </div>
+        <div className="text-xs text-gray-500 mb-3">
+          Last updated: {lastUpdated.toLocaleTimeString()}
+        </div>
         <div className="space-y-2">
           {teams.map((team, idx) => (
             <button
