@@ -225,7 +225,7 @@ export default function StudentGameplay() {
           .eq('week_number', previousWeek)
           .single()
         
-        revenue = previousWeekResult?. Doesnt work still the same || 0
+        revenue = previousWeekResult?.revenue || 0
         demand = previousWeekResult?.demand || 0
       }
       // If current_week = 1, revenue and demand remain 0
