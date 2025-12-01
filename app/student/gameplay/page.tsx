@@ -494,21 +494,21 @@ export default function StudentGameplay() {
               </div>
             )}
 
-            <div className="grid grid-cols-4 gap-4 mb-8">
-              <div>
+            <div className="flex flex-wrap gap-4 mb-8">
+              <div className="flex-1 min-w-[200px]">
                 <p className="text-sm text-gray-600 mb-1">Demand</p>
                 <p className="text-3xl font-bold text-green-600">{(displayDemand ?? 0).toLocaleString()} pcs</p>
               </div>
-              <div>
+              <div className="flex-1 min-w-[200px]">
                 <p className="text-sm text-gray-600 mb-1">Revenue</p>
                 <p className="text-3xl font-bold text-blue-600">฿{(displayRevenue ?? 0).toLocaleString()}</p>
               </div>
-              <div>
+              <div className="flex-1 min-w-[200px]">
                 <p className="text-sm text-gray-600 mb-1">Balance</p>
                 <p className="text-3xl font-bold text-[#E63946]">${team.total_balance.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">From milestone achievements</p>
               </div>
-              <div className="text-right">
+              <div className="flex-1 min-w-[200px] text-right">
                 <p className="text-sm text-gray-600 mb-1">Funding Stage</p>
                 <div className="bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white px-4 py-2 rounded-lg font-semibold text-sm inline-flex items-center gap-2">
                   <span>📍</span>
