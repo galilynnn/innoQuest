@@ -35,7 +35,30 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
 
   useEffect(() => {
     loadTeams()
-    // Removed auto-polling to prevent API overload
+    
+    // Set up real-time subscription for team balance updates
+    const channel = supabase
+      .channel('teams_balance_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'teams',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Team balance updated:', payload)
+          // Reload teams to get updated balance
+          loadTeams()
+        }
+      )
+      .subscribe()
+    
+    return () => {
+      supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
 
   const loadTeams = async () => {
@@ -48,9 +71,21 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
 
       if (data) {
         setTeams(data as Team[])
-        if (data.length > 0 && !selectedTeam) {
-          setSelectedTeam(data[0] as Team)
-          loadWeeklyResults((data[0] as any).team_id)
+        if (data.length > 0) {
+          // Update selectedTeam if it exists, otherwise select first team
+          if (selectedTeam) {
+            const updatedTeam = data.find(t => t.team_id === selectedTeam.team_id)
+            if (updatedTeam) {
+              setSelectedTeam(updatedTeam as Team)
+            } else {
+              // Selected team no longer exists, select first team
+              setSelectedTeam(data[0] as Team)
+              loadWeeklyResults((data[0] as any).team_id)
+            }
+          } else {
+            setSelectedTeam(data[0] as Team)
+            loadWeeklyResults((data[0] as any).team_id)
+          }
         }
       }
       
@@ -216,14 +251,12 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                     <tr className="text-muted-foreground">
                       <th className="text-center py-2">Week</th>
                       <th className="text-center py-2">Revenue</th>
-                      <th className="text-center py-2">Profit</th>
-                      <th className="text-center py-2">Status</th>
                     </tr>
                   </thead>
                   <tbody className="space-y-2">
                     {weeklyResults.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="text-center py-4 text-muted-foreground">
+                        <td colSpan={2} className="text-center py-4 text-muted-foreground">
                           No results yet
                         </td>
                       </tr>
@@ -232,22 +265,6 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                         <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
                           <td className="py-3 text-center">Week {result.week_number}</td>
                           <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
-                          <td className={`text-center font-semibold ${(result.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            ${(result.profit || 0).toLocaleString()}
-                          </td>
-                          <td className="text-center">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-medium ${
-                                result.pass_fail_status === 'pass'
-                                  ? 'bg-green-100 text-green-800'
-                                  : result.pass_fail_status === 'fail'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {result.pass_fail_status || 'pending'}
-                            </span>
-                          </td>
                         </tr>
                       ))
                     )}

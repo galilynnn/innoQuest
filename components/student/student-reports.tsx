@@ -124,11 +124,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground mb-1">Total Revenue</p>
-          <p className="text-2xl font-bold text-primary">฿{totalRevenue.toLocaleString()}</p>
-        </div>
+      <div className="grid grid-cols-1 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground mb-1">R&D Tests Passed</p>
           <p className="text-2xl font-bold">{successfulTests}</p>

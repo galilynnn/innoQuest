@@ -224,17 +224,25 @@ export default function StudentGameplay() {
             .select('revenue, demand')
             .eq('team_id', team.team_id)
             .eq('week_number', previousWeek)
-            .single()
+            .maybeSingle()
           
           if (error) {
-            console.error('Error fetching weekly results:', error)
-            // Set to 0 on error
+            // Only log if it's not a "no rows" error (PGRST116)
+            if (error.code !== 'PGRST116') {
+              console.error('Error fetching weekly results:', error)
+            }
+            // Set to 0 on error or if no record found
             revenue = 0
             demand = 0
-          } else {
-            revenue = previousWeekResult?.revenue ?? 0
-            demand = previousWeekResult?.demand ?? 0
+          } else if (previousWeekResult) {
+            revenue = previousWeekResult.revenue ?? 0
+            demand = previousWeekResult.demand ?? 0
             console.log('📊 Revenue and Demand loaded:', { revenue, demand, previousWeek, team_id: team.team_id })
+          } else {
+            // No record found (normal for first time)
+            revenue = 0
+            demand = 0
+            console.log('📊 No weekly results found for week', previousWeek, '- setting to 0')
           }
         } else {
           console.log('📊 Week 1 - Revenue and Demand set to 0')
@@ -265,7 +273,7 @@ export default function StudentGameplay() {
           .select('revenue, demand, pass_fail_status')
           .eq('team_id', team.team_id)
           .eq('week_number', previousWeek)
-          .single()
+          .maybeSingle()
         
         // Check if lost round: revenue = 0, demand = 0, and pass_fail_status = 'fail'
         if (previousWeekResult && previousWeekResult.revenue === 0 && previousWeekResult.demand === 0 && previousWeekResult.pass_fail_status === 'fail') {
