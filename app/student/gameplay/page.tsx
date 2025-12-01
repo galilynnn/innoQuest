@@ -211,27 +211,44 @@ export default function StudentGameplay() {
     if (!team || !gameSettings) return
 
     const refreshRevenueAndDemand = async () => {
-      // Get revenue and demand from the previous week (current_week - 1)
-      // Round 1 (week 1) shows 0, Round 2 (week 2) shows week 1 results, etc.
-      let revenue = 0
-      let demand = 0
-      
-      if (gameSettings.current_week > 1) {
-        const previousWeek = gameSettings.current_week - 1
-        const { data: previousWeekResult } = await supabase
-          .from('weekly_results')
-          .select('revenue, demand')
-          .eq('team_id', team.team_id)
-          .eq('week_number', previousWeek)
-          .single()
+      try {
+        // Get revenue and demand from the previous week (current_week - 1)
+        // Round 1 (week 1) shows 0, Round 2 (week 2) shows week 1 results, etc.
+        let revenue = 0
+        let demand = 0
         
-        revenue = previousWeekResult?.revenue || 0
-        demand = previousWeekResult?.demand || 0
+        if (gameSettings.current_week > 1) {
+          const previousWeek = gameSettings.current_week - 1
+          const { data: previousWeekResult, error } = await supabase
+            .from('weekly_results')
+            .select('revenue, demand')
+            .eq('team_id', team.team_id)
+            .eq('week_number', previousWeek)
+            .single()
+          
+          if (error) {
+            console.error('Error fetching weekly results:', error)
+            // Set to 0 on error
+            revenue = 0
+            demand = 0
+          } else {
+            revenue = previousWeekResult?.revenue ?? 0
+            demand = previousWeekResult?.demand ?? 0
+            console.log('📊 Revenue and Demand loaded:', { revenue, demand, previousWeek, team_id: team.team_id })
+          }
+        } else {
+          console.log('📊 Week 1 - Revenue and Demand set to 0')
+        }
+        // If current_week = 1, revenue and demand remain 0
+        
+        setDisplayRevenue(revenue)
+        setDisplayDemand(demand)
+      } catch (error) {
+        console.error('Error in refreshRevenueAndDemand:', error)
+        // Ensure we set values even on error
+        setDisplayRevenue(0)
+        setDisplayDemand(0)
       }
-      // If current_week = 1, revenue and demand remain 0
-      
-      setDisplayRevenue(revenue)
-      setDisplayDemand(demand)
     }
 
     // Check if new round started
@@ -264,7 +281,7 @@ export default function StudentGameplay() {
     checkLostRound()
     setLastSeenWeek(gameSettings.current_week)
     refreshRevenueAndDemand()
-  }, [team, gameSettings, supabase, lastSeenWeek])
+  }, [team?.team_id, gameSettings?.current_week, supabase])
 
   // Set up realtime subscriptions separately, only after team and gameSettings are loaded
   useEffect(() => {
@@ -321,26 +338,39 @@ export default function StudentGameplay() {
           
           // Update revenue and demand if weekly results changed
           const updateRevenueAndDemand = async () => {
-            if (!gameSettings) return
-            
-            let revenue = 0
-            let demand = 0
-            
-            if (gameSettings.current_week > 1) {
-              const previousWeek = gameSettings.current_week - 1
-              const { data: previousWeekResult } = await supabase
-                .from('weekly_results')
-                .select('revenue, demand')
-                .eq('team_id', updatedTeam.team_id)
-                .eq('week_number', previousWeek)
-                .single()
+            try {
+              if (!gameSettings) return
               
-              revenue = previousWeekResult?.revenue || 0
-              demand = previousWeekResult?.demand || 0
+              let revenue = 0
+              let demand = 0
+              
+              if (gameSettings.current_week > 1) {
+                const previousWeek = gameSettings.current_week - 1
+                const { data: previousWeekResult, error } = await supabase
+                  .from('weekly_results')
+                  .select('revenue, demand')
+                  .eq('team_id', updatedTeam.team_id)
+                  .eq('week_number', previousWeek)
+                  .single()
+                
+                if (error) {
+                  console.error('Error updating revenue/demand:', error)
+                  revenue = 0
+                  demand = 0
+                } else {
+                  revenue = previousWeekResult?.revenue ?? 0
+                  demand = previousWeekResult?.demand ?? 0
+                  console.log('📊 Revenue and Demand updated:', { revenue, demand })
+                }
+              }
+              
+              setDisplayRevenue(revenue)
+              setDisplayDemand(demand)
+            } catch (error) {
+              console.error('Error in updateRevenueAndDemand:', error)
+              setDisplayRevenue(0)
+              setDisplayDemand(0)
             }
-            
-            setDisplayRevenue(revenue)
-            setDisplayDemand(demand)
           }
           updateRevenueAndDemand()
         }
@@ -467,11 +497,11 @@ export default function StudentGameplay() {
             <div className="grid grid-cols-4 gap-4 mb-8">
               <div>
                 <p className="text-sm text-gray-600 mb-1">Demand</p>
-                <p className="text-3xl font-bold text-green-600">{displayDemand.toLocaleString()} pcs</p>
+                <p className="text-3xl font-bold text-green-600">{(displayDemand ?? 0).toLocaleString()} pcs</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Revenue</p>
-                <p className="text-3xl font-bold text-blue-600">฿{displayRevenue.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-blue-600">฿{(displayRevenue ?? 0).toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600 mb-1">Balance</p>
