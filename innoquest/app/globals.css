@@ -1,0 +1,211 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Primary Red/White Theme for Backend Startup Sim */
+  --primary: #E63946;
+  --primary-light: #F7767F;
+  
+  /* Neutrals */
+  --white: #FFFFFF;
+  --gray-50: #F9FAFB;
+  --gray-100: #F3F4F6;
+  --gray-200: #E5E7EB;
+  --gray-300: #D1D5DB;
+  --gray-400: #9CA3AF;
+  --gray-500: #6B7280;
+  --gray-600: #4B5563;
+  --gray-700: #374151;
+  --gray-800: #1F2937;
+  --gray-900: #111827;
+  
+  /* Semantic Colors */
+  --background: #FFFFFF;
+  --foreground: #111827;
+  --card: #F9FAFB;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary-color: #E63946;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #111827;
+  --muted: #E5E7EB;
+  --muted-foreground: #6B7280;
+  --accent: #E63946;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #E5E7EB;
+  --input: #F3F4F6;
+  --ring: #E63946;
+  --chart-1: #E63946;
+  --chart-2: #2563EB;
+  --chart-3: #16A34A;
+  --chart-4: #EA580C;
+  --chart-5: #7C3AED;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: #0F172A;
+  --foreground: #F1F5F9;
+  --card: #1E293B;
+  --card-foreground: #F1F5F9;
+  --popover: #1E293B;
+  --popover-foreground: #F1F5F9;
+  --primary-color: #E63946;
+  --primary-foreground: #FFFFFF;
+  --secondary: #334155;
+  --secondary-foreground: #F1F5F9;
+  --muted: #475569;
+  --muted-foreground: #CBD5E1;
+  --accent: #E63946;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #000000;
+  --border: #334155;
+  --input: #1E293B;
+  --ring: #E63946;
+}
+
+@theme inline {
+  --font-sans: 'Inter', 'Inter Fallback', system-ui;
+  --font-serif: 'Poppins', 'Poppins Fallback';
+  --font-mono: 'Menlo', 'Monaco', monospace;
+  
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary-color);
+  --color-primary-light: var(--primary-light);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  h1 {
+    @apply font-serif text-4xl font-bold;
+  }
+  
+  h2 {
+    @apply font-serif text-2xl font-bold;
+  }
+  
+  h3 {
+    @apply font-serif text-xl font-semibold;
+  }
+  
+  h4 {
+    @apply font-serif text-lg font-semibold;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 bg-primary text-primary-foreground font-serif font-semibold rounded-lg hover:bg-accent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-secondary {
+    @apply px-6 py-3 bg-secondary text-secondary-foreground font-serif font-semibold rounded-lg hover:bg-muted transition-all duration-200;
+  }
+  
+  .card-base {
+    @apply bg-card text-card-foreground rounded-lg border border-border p-6 shadow-sm hover:shadow-md transition-shadow;
+  }
+}
+
+/* Custom animations matching index5.html */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* Prevent mobile viewing */
+@media (max-width: 768px) {
+  body::before {
+    content: 'This application is optimized for iPad and desktop. Please use a larger screen.';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 1.25rem;
+    z-index: 9999;
+  }
+}
