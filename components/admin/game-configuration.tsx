@@ -91,7 +91,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
   const [populationSize, setPopulationSize] = useState<number>(10000)
   const [initialCapital, setInitialCapital] = useState<number>(500000)
   const [analyticsCost, setAnalyticsCost] = useState<number>(5000)
-  const [baseOperatingCost, setBaseOperatingCost] = useState<number>(20000)
   const [investmentConfig, setInvestmentConfig] = useState<InvestmentConfig>({
     seed: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
     series_a: { mean: 0, sd: 0, sd_percent: 0, main_ratio: 0, bonus_ratio: 0, bonus_multiplier: 0, expected_revenue: 0, demand: 0, rd_count: 0 },
@@ -162,7 +161,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           if (data.population_size) setPopulationSize(data.population_size)
           if (data.initial_capital) setInitialCapital(data.initial_capital)
           if (data.analytics_cost) setAnalyticsCost(data.analytics_cost)
-          if (data.base_operating_cost) setBaseOperatingCost(data.base_operating_cost)
           
           // Load investment config if exists, otherwise initialize with empty structure for admin to fill
           if (data.investment_config) {
@@ -282,7 +280,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
       return
     }
 
-    console.log('Saving settings:', { weeks, weekDuration, maxTeams, populationSize, initialCapital, analyticsCost, baseOperatingCost, gameId })
+    console.log('Saving settings:', { weeks, weekDuration, maxTeams, populationSize, initialCapital, analyticsCost, gameId })
 
     const { data, error } = await supabase
       .from('game_settings')
@@ -293,7 +291,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
         population_size: populationSize,
         initial_capital: initialCapital,
         analytics_cost: analyticsCost,
-        base_operating_cost: baseOperatingCost,
         investment_config: investmentConfig,
         rnd_tier_config: rndTierConfig,
         product_probability_weights: probabilityWeights,
@@ -313,7 +310,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
         population_size: populationSize,
         initial_capital: initialCapital,
         analytics_cost: analyticsCost,
-        base_operating_cost: baseOperatingCost,
         investment_config: investmentConfig,
         rnd_tier_config: rndTierConfig,
         product_probability_weights: probabilityWeights,
@@ -327,7 +323,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
       alert('✅ All settings saved successfully!\n\n' +
         'Saved configurations:\n' +
         `• Game Basics (Weeks: ${weeks}, Duration: ${weekDuration}min, Teams: ${maxTeams})\n` +
-        `• Game Economy (Population: ${populationSize.toLocaleString()}, Capital: ฿${initialCapital.toLocaleString()}, Analytics: ฿${analyticsCost.toLocaleString()}, Base Operating Cost: ฿${baseOperatingCost.toLocaleString()})\n` +
+        `• Game Economy (Population: ${populationSize.toLocaleString()}, Capital: ฿${initialCapital.toLocaleString()}, Analytics: ฿${analyticsCost.toLocaleString()})\n` +
         '• Investment Configuration\n' +
         '• R&D Tier Configuration\n' +
         '• Product Probability Weights'
@@ -525,23 +521,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                     className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <p className="text-xs text-muted-foreground mt-1">Amount charged per analytics tool purchased by teams</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Base Operating Cost (per week)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={baseOperatingCost}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value)
-                      setBaseOperatingCost(isNaN(val) ? 20000 : val)
-                    }}
-                    disabled={gameActive}
-                    className="w-full px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Fixed base cost per week (operating cost = base + demand × 0.5)</p>
                 </div>
               </div>
             </div>

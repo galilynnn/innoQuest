@@ -98,7 +98,6 @@ export interface WeeklyCalculationInput {
   analytics_quantity?: number // Number of analytics tools purchased
   population_size?: number // Admin-configured market population size
   cost_per_analytics?: number // Admin-configured cost per analytics tool
-  base_operating_cost?: number // Admin-configured base operating cost per week
   current_customer_count: number
   rnd_multiplier: number
   rnd_tier_config?: RndTierConfig // Admin-configured R&D tier settings
@@ -112,7 +111,6 @@ export interface WeeklyCalculationInput {
 export interface WeeklyCalculationResult {
   demand: number
   revenue: number
-  operating_cost: number
   rnd_cost: number
   analytics_cost: number
   total_costs: number
@@ -169,18 +167,6 @@ export function calculateCOGS(revenue: number, productId: number): number {
   if (!product) throw new Error(`Invalid product ID: ${productId}`)
 
   return revenue * (1 - product.margin_percentage)
-}
-
-/**
- * Calculate operating costs (base + scalable)
- * @param demand - Number of units sold
- * @param baseOperatingCost - Admin-configured base operating cost (default: 20000)
- */
-export function calculateOperatingCosts(demand: number, baseOperatingCost: number = 20000): number {
-  const baseCost = baseOperatingCost
-  const scalableCost = demand * 0.5 // $0.50 per unit for logistics
-
-  return baseCost + scalableCost
 }
 
 /**
@@ -396,16 +382,19 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   console.log(`✅ Revenue Result: ฿${revenue.toLocaleString()}`)
   console.log(`💰 ==========================================`)
   
-  const baseOperatingCost = input.base_operating_cost ?? 20000 // Default to 20000 if not provided
-  const operatingCost = calculateOperatingCosts(demand, baseOperatingCost)
+  // Calculate costs - NO operating cost, only R&D and analytics
   const costPerAnalytics = input.cost_per_analytics || 5000
   const analyticsQuantity = input.analytics_quantity || 0
   const analyticsCost = analyticsQuantity > 0 ? costPerAnalytics * analyticsQuantity : 0
 
-  const totalCosts = operatingCost + rndCost + analyticsCost
-  let profit = revenue - totalCosts
+  const totalCosts = rndCost + analyticsCost
+  
+  // Profit is NEGATIVE (expense deduction from balance)
+  // Balance change = -totalCosts (no revenue added to balance)
+  // Revenue is only used for milestone advancement criteria, NOT for balance
+  let profit = -totalCosts
 
-  // Apply admin-granted bonus multiplier if present
+  // Apply admin-granted bonus multiplier if present (applies to the expense deduction)
   const bonusMultiplierApplied = input.bonus_multiplier_pending || null
   if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 0) {
     profit = Math.round(profit * bonusMultiplierApplied)
@@ -426,11 +415,10 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   return {
     demand: demand,
     revenue,
-    operating_cost: operatingCost,
     rnd_cost: rndCost,
     analytics_cost: analyticsCost,
     total_costs: totalCosts,
-    profit: Math.max(-10000, profit), // Minimum loss capped at -10k
+    profit: profit, // This is always negative (or zero if no costs)
     rnd_tested: rndTested,
     rnd_success: rndSuccess,
     pass_fail_status: passFail,

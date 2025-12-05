@@ -6,8 +6,9 @@ import NextImage from 'next/image'
 import StudentHeader from '@/components/student/student-header'
 import WeeklyDecisions from '@/components/student/weekly-decisions'
 import StudentReports from '@/components/student/student-reports'
+import AnalyticsToolsView from '@/components/student/analytics-tools-view'
 
-type TabType = 'decisions' | 'reports' | 'history'
+type TabType = 'decisions' | 'reports' | 'tools'
 
 interface TeamData {
   team_id: string
@@ -606,15 +607,15 @@ export default function StudentGameplay() {
                 <span>Reports & Analytics</span>
               </button>
               <button
-                onClick={() => setActiveTab('history')}
+                onClick={() => setActiveTab('tools')}
                 className={`flex-1 px-6 py-3 rounded-lg font-['Poppins'] font-semibold text-[15px] transition-all flex items-center justify-center gap-2 ${
-                  activeTab === 'history'
+                  activeTab === 'tools'
                     ? 'bg-white text-[#E63946] shadow-md'
                     : 'bg-transparent text-gray-600 hover:bg-white/15'
                 }`}
               >
-                <span>📜</span>
-                <span>Decision History</span>
+                <span>🔧</span>
+                <span>Tools</span>
               </button>
             </div>
           </div>
@@ -624,10 +625,28 @@ export default function StudentGameplay() {
               <WeeklyDecisions team={team} gameSettings={gameSettings} />
             )}
             {activeTab === 'reports' && (
-              <StudentReports team={team} gameSettings={gameSettings} />
+              <div className="space-y-8">
+                {/* Decision History Section */}
+                <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+                    <div className="w-1 h-8 bg-gradient-to-b from-purple-500 to-purple-700 rounded-full"></div>
+                    <h2 className="text-2xl font-serif font-bold text-gray-900">Decision History</h2>
+                  </div>
+                  <DecisionHistory team={team} />
+                </section>
+
+                {/* Reports & Analytics Section */}
+                <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+                  <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+                    <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-blue-700 rounded-full"></div>
+                    <h2 className="text-2xl font-serif font-bold text-gray-900">Reports & Analytics</h2>
+                  </div>
+                  <StudentReports team={team} gameSettings={gameSettings} />
+                </section>
+              </div>
             )}
-            {activeTab === 'history' && (
-              <DecisionHistory team={team} />
+            {activeTab === 'tools' && (
+              <AnalyticsToolsView team={team} gameSettings={gameSettings} />
             )}
           </div>
         </div>
@@ -681,8 +700,7 @@ function DecisionHistory({ team }: { team: TeamData }) {
   }
 
   return (
-    <div className="bg-card border border-border rounded-lg p-6">
-      <h3 className="text-lg font-serif font-bold mb-4">Decision History</h3>
+    <div>
       {results.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
           <p>No decisions submitted yet. Submit decisions to see your history here.</p>

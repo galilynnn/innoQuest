@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { calculateWeeklyResults, processRndTest, calculateDemand, calculateRevenue, calculateOperatingCosts, determineFundingStatus, calculateBalanceAward } from '@/lib/game-calculations'
+import { calculateWeeklyResults, processRndTest, calculateDemand, calculateRevenue, determineFundingStatus, calculateBalanceAward } from '@/lib/game-calculations'
 
 export async function POST(request: NextRequest) {
   console.log('🚀 ============================================')
@@ -126,7 +126,6 @@ export async function POST(request: NextRequest) {
     const investmentConfig = gameSettingsData?.investment_config || undefined
     const populationSize = gameSettingsData?.population_size || 10000
     const costPerAnalytics = gameSettingsData?.analytics_cost || 5000
-    const baseOperatingCost = gameSettingsData?.base_operating_cost || 20000
     const initialCapital = gameSettingsData?.initial_capital || 0
 
     console.log('⚙️ ============================================')
@@ -139,7 +138,6 @@ export async function POST(request: NextRequest) {
     console.log('⚙️ Investment Config keys:', investmentConfig ? Object.keys(investmentConfig) : 'NONE')
     console.log('⚙️ Population Size:', populationSize)
     console.log('⚙️ Cost Per Analytics:', costPerAnalytics)
-    console.log('⚙️ Base Operating Cost:', baseOperatingCost)
     console.log('⚙️ ============================================')
 
     // Process calculations for ALL teams that have joined the game
@@ -319,7 +317,6 @@ export async function POST(request: NextRequest) {
           analytics_quantity: weeklyResult.analytics_quantity || 0,
           population_size: populationSize,
           cost_per_analytics: costPerAnalytics,
-          base_operating_cost: baseOperatingCost,
           current_customer_count: team.total_balance || 0,
           rnd_multiplier: 1.0,
           rnd_tier_config: rndTierConfig,
@@ -436,9 +433,10 @@ export async function POST(request: NextRequest) {
             let revenue = calculateRevenue(demand, calculationInput.set_price)
             console.log(`✅ Revenue Result: ฿${revenue.toLocaleString()}`)
             console.log(`💰 ==========================================`)
-            const operatingCost = calculateOperatingCosts(demand, calculationInput.base_operating_cost || 20000)
+            
+            // Calculate costs - NO operating cost, only R&D and analytics
             const analyticsCost = (calculationInput.analytics_quantity || 0) * (calculationInput.cost_per_analytics || 5000)
-            const totalCosts = operatingCost + combinedCost + analyticsCost
+            const totalCosts = combinedCost + analyticsCost
             
             // Check if team has insufficient balance - if so, set everything to 0/fail
             const currentBalance = team.total_balance || 0
@@ -464,10 +462,12 @@ export async function POST(request: NextRequest) {
               firstTest = null
               secondTest = null
               
-              // Set profit to negative (loss)
+              // Set profit to negative (loss) - balance decreases by totalCosts
               profit = -totalCosts
             } else {
-              let profitCalc = revenue - totalCosts
+              // Profit is NEGATIVE (expenses deducted from balance)
+              // Revenue is NOT added to balance, only used for milestone criteria
+              let profitCalc = -totalCosts
               if (calculationInput.bonus_multiplier_pending) {
                 profitCalc = Math.round(profitCalc * (calculationInput.bonus_multiplier_pending || 1))
               }
@@ -487,11 +487,10 @@ export async function POST(request: NextRequest) {
             results = {
               demand,
               revenue,
-              operating_cost: operatingCost,
               rnd_cost: combinedCost,
               analytics_cost: analyticsCost,
               total_costs: totalCosts,
-              profit: isInsufficient ? profit : Math.max(-10000, profit),
+              profit: profit, // Always negative or zero
               rnd_tested: !isInsufficient && weeklyResult.rnd_tier ? true : false,
               rnd_success: combinedSuccess,
               pass_fail_status: isInsufficient ? 'fail' : passFail,
@@ -499,7 +498,7 @@ export async function POST(request: NextRequest) {
               rnd_success_probability: isInsufficient ? undefined : (successProbability * 100),
               rnd_multiplier: isInsufficient ? undefined : combinedMultiplier,
               next_funding_stage: isInsufficient ? 'Pre-Seed' : nextStage,
-              funding_advanced: false, // Never advance if insufficient
+              funding_advanced: qualifiesForNextStage && !isInsufficient, // Can advance if not insufficient
               bonus_multiplier_applied: isInsufficient ? null : (calculationInput.bonus_multiplier_pending || null),
             }
 
@@ -508,7 +507,7 @@ export async function POST(request: NextRequest) {
             // Single R&D test path
             // Check if team has insufficient balance first
             const currentBalance = team.total_balance || 0
-            const estimatedCosts = baseOperatingCost + (calculationInput.rnd_tier ? (rndTierConfig?.[calculationInput.rnd_tier as keyof typeof rndTierConfig]?.min_cost || 0) : 0) + (calculationInput.analytics_quantity || 0) * costPerAnalytics
+            const estimatedCosts = (calculationInput.rnd_tier ? (rndTierConfig?.[calculationInput.rnd_tier as keyof typeof rndTierConfig]?.min_cost || 0) : 0) + (calculationInput.analytics_quantity || 0) * costPerAnalytics
             const isInsufficient = estimatedCosts > currentBalance
             
             if (isInsufficient) {
@@ -825,7 +824,16 @@ export async function POST(request: NextRequest) {
         const stageConfig = investmentConfig[configKey]
         const maxTeams = settings.max_teams || 10
         
-        console.log(`🎯 Processing ${milestoneStage} milestone for ${advancements.length} teams`)
+        // Calculate actual SD from mean and sd_percent
+        // SD = mean × (sd_percent / 100)
+        const actualSD = stageConfig.mean * (stageConfig.sd_percent / 100)
+        
+        console.log(`🎯 Processing ${milestoneStage} milestone for ${advancements.length} teams`, {
+          mean: stageConfig.mean,
+          sd_percent: stageConfig.sd_percent,
+          calculated_sd: actualSD,
+          raw_sd: stageConfig.sd
+        })
         
         // Calculate balance awards for each team based on their rank
         for (let i = 0; i < advancements.length; i++) {
@@ -846,12 +854,12 @@ export async function POST(request: NextRequest) {
             continue
           }
           
-          // Calculate balance award using NORMINV formula
+          // Calculate balance award using NORMINV formula with calculated SD
           const awardAmount = calculateBalanceAward(
             rank,
             maxTeams,
             stageConfig.mean,
-            stageConfig.sd
+            actualSD
           )
           
           console.log(`💰 Awarding ${milestoneStage} milestone:`, {
@@ -859,7 +867,8 @@ export async function POST(request: NextRequest) {
             rank,
             awardAmount,
             mean: stageConfig.mean,
-            sd: stageConfig.sd,
+            sd_percent: stageConfig.sd_percent,
+            calculated_sd: actualSD,
             maxTeams
           })
           

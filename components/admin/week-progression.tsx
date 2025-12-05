@@ -128,14 +128,6 @@ export default function WeekProgression() {
 
   const weeksRemaining = Math.max(0, gameSettings.total_weeks - gameSettings.current_week)
 
-  // Remove team stage tracking as it's not critical for week progression
-  const teamsByStage = {
-    seed: 0,
-    seriesA: 0,
-    seriesB: 0,
-    seriesC: 0,
-  }
-
   const handleAdvanceWeek = async () => {
     alert('🎮 BUTTON CLICKED! Check console now!')
     console.log('🎮 ============================================')
@@ -328,31 +320,6 @@ export default function WeekProgression() {
             <p className="text-xs text-gray-500 mt-2 text-center">
               {canAdvance ? (gameSettings.current_week === gameSettings.total_weeks ? 'This will end the game and show final results to all students' : 'Admin can manually advance before timer ends') : 'All weeks completed'}
             </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="card-base">
-        <h2 className="text-lg font-serif font-bold text-gray-900 mb-4">
-          Funding Stage Distribution
-        </h2>
-
-        <div className="grid grid-cols-4 gap-2">
-          <div className="bg-blue-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-blue-600">{teamsByStage.seed}</p>
-            <p className="text-xs text-gray-600 mt-1">Seed</p>
-          </div>
-          <div className="bg-purple-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-purple-600">{teamsByStage.seriesA}</p>
-            <p className="text-xs text-gray-600 mt-1">Series A</p>
-          </div>
-          <div className="bg-orange-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-orange-600">{teamsByStage.seriesB}</p>
-            <p className="text-xs text-gray-600 mt-1">Series B</p>
-          </div>
-          <div className="bg-green-50 p-3 rounded-lg text-center">
-            <p className="text-2xl font-bold text-green-600">{teamsByStage.seriesC}</p>
-            <p className="text-xs text-gray-600 mt-1">Series C</p>
           </div>
         </div>
       </Card>

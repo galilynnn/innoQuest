@@ -124,13 +124,13 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4">
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
           <p className="text-sm text-muted-foreground mb-1">R&D Tests Passed</p>
           <p className="text-2xl font-bold">{successfulTests}</p>
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-6">
+      <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-serif font-bold">R&D Test Results & Analytics</h3>
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2">

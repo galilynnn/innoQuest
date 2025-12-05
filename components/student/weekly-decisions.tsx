@@ -55,6 +55,40 @@ const RND_STRATEGIES = [
   },
 ]
 
+const ANALYTICS_TOOLS = [
+  { category: 'Health Consciousness', operation: 'Average', metrics: ['Monthly Food Spending', 'Monthly Income'], breakdown: 'Health Consciousness', chart: 'Stacked Bar Chart', fullName: 'Average of Monthly Food Spending and Average of Monthly Income by Health Consciousness (Stacked Bar Chart)' },
+  { category: 'Health Consciousness', operation: 'Average', metrics: ['Working Hours per Week'], breakdown: 'Health Consciousness', chart: 'Bar Chart', fullName: 'Average of Working Hours per Week by Health Consciousness (Bar Chart)' },
+  { category: 'Gender', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Gender', chart: 'Pie Chart', fullName: 'Count of Customer_ID by Gender (Pie Chart)' },
+  { category: 'Experimental Food Interest', operation: 'Average', metrics: ['Working Hours per Week'], breakdown: 'Interest in Experimental Food', chart: 'Bar Chart', fullName: 'Average of Working Hours per Week by Interest in Experimental Food (Bar Chart)' },
+  { category: 'Experimental Food Interest', operation: 'Average', metrics: ['Monthly Food Spending', 'Monthly Income'], breakdown: 'Interest in Experimental Food', chart: 'Stacked Bar Chart', fullName: 'Average of Monthly Food Spending and Average of Monthly Income by Interest in Experimental Food (Stacked Bar Chart)' },
+  { category: 'Gender', operation: 'Average', metrics: ['Monthly Income', 'Monthly Food Spending'], breakdown: 'Gender', chart: 'Stacked Bar Chart', fullName: 'Average of Monthly Income and Average of Monthly Food Spending by Gender (Stacked Bar Chart)' },
+  { category: 'Health Consciousness', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Health Consciousness', chart: 'Bar Chart', fullName: 'Count of Customer_ID by Health Consciousness (Bar Chart)' },
+  { category: 'Experimental Food Interest', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Interest in Experimental Food', chart: 'Bar Chart', fullName: 'Count of Customer_ID by Interest in Experimental Food (Bar Chart)' },
+  { category: 'Working Hours', operation: 'Average', metrics: ['Monthly Income'], breakdown: 'Working Hours per Week', chart: 'Bar Chart', fullName: 'Average of Monthly Income by Working Hours per Week (Bar Chart)' },
+  { category: 'Brand Loyalty', operation: 'Average', metrics: ['Monthly Food Spending', 'Monthly Income'], breakdown: 'Brand Loyalty', chart: 'Stacked Bar Chart', fullName: 'Average of Monthly Food Spending and Average of Monthly Income by Brand Loyalty (Stacked Bar Chart)' },
+  { category: 'Dietary Preference', operation: 'Average', metrics: ['Brand Loyalty'], breakdown: 'Dietary Preference', chart: 'Bar Chart', fullName: 'Average of Brand Loyalty by Dietary Preference (Bar Chart)' },
+  { category: 'Brand Loyalty', operation: 'Average', metrics: ['Monthly Income', 'Monthly Food Spending'], breakdown: 'Brand Loyalty', chart: 'Combination Bar and Line Chart', fullName: 'Average of Monthly Income and Average of Monthly Food Spending by Brand Loyalty (Combination Bar and Line Chart)' },
+  { category: 'Brand Loyalty', operation: 'Average', metrics: ['Monthly Food Spending'], breakdown: 'Brand Loyalty', chart: 'Bar Chart', fullName: 'Average of Monthly Food Spending by Brand Loyalty (Bar Chart)' },
+  { category: 'Brand Loyalty', operation: 'Average', metrics: ['Monthly Income'], breakdown: 'Brand Loyalty and Gender', chart: 'Clustered Bar Chart', fullName: 'Average of Monthly Income by Brand Loyalty and Gender (Clustered Bar Chart)' },
+  { category: 'Sustainability Preference', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Sustainability Preference', chart: 'Bar Chart', fullName: 'Count of Customer_ID by Sustainability Preference (Bar Chart)' },
+  { category: 'Health Consciousness', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Health Consciousness and Sustainability Preference', chart: 'Clustered Bar Chart', fullName: 'Count of Customer_ID by Health Consciousness and Sustainability Preference (Clustered Bar Chart)' },
+  { category: 'Sustainability Preference', operation: 'Average', metrics: ['Monthly Income'], breakdown: 'Sustainability Preference', chart: 'Line Chart', fullName: 'Average of Monthly Income by Sustainability Preference (Line Chart)' },
+  { category: 'Sustainability Preference', operation: 'Sum', metrics: ['Monthly Food Spending'], breakdown: 'Sustainability Preference', chart: 'Bar Chart', fullName: 'Sum of Monthly Food Spending by Sustainability Preference (Bar Chart)' },
+  { category: 'Sustainability Preference', operation: 'Average', metrics: ['Monthly Income', 'Monthly Food Spending'], breakdown: 'Sustainability Preference and Gender', chart: 'Combination Bar and Line Chart', fullName: 'Average of Monthly Income and Average of Monthly Food Spending by Sustainability Preference and Gender (Combination Bar and Line Chart)' },
+  { category: 'Brand Loyalty', operation: 'Count', metrics: ['Customer_ID'], breakdown: 'Brand Loyalty and Gender', chart: 'Clustered Bar Chart', fullName: 'Count of Customer_ID by Brand Loyalty and Gender (Clustered Bar Chart)' },
+]
+
+const ANALYTICS_CATEGORIES = [
+  'All',
+  'Health Consciousness',
+  'Gender',
+  'Experimental Food Interest',
+  'Working Hours',
+  'Brand Loyalty',
+  'Dietary Preference',
+  'Sustainability Preference',
+]
+
 export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsProps) {
   const supabase = createClient()
   const [assignedProduct, setAssignedProduct] = useState<{ id: string; name: string; category?: string } | null>(null)
@@ -64,8 +98,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const [rndSelections, setRndSelections] = useState<Array<{ id: number; tier: string }>>([]) // Queue-based selection
   const [rndSelectionCounter, setRndSelectionCounter] = useState<number>(0) // ID counter for unique IDs
   const [firstTestFailed, setFirstTestFailed] = useState(false)
-  const [analyticsPurchased, setAnalyticsPurchased] = useState(false)
-  const [analyticsQuantity, setAnalyticsQuantity] = useState<string>('0')
+  const [selectedAnalyticsTools, setSelectedAnalyticsTools] = useState<string[]>([])
+  const [analyticsCategory, setAnalyticsCategory] = useState<string>('All')
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [loading, setLoading] = useState(false)
   const [rndTiers, setRndTiers] = useState<any[]>([])
@@ -181,7 +215,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const costPerAnalytics = gameSettings.cost_per_analytics || 5000
   // Parse values for calculations and display
   const priceNum = parseFloat(price) || 0
-  const analyticsQuantityNum = parseInt(analyticsQuantity) || 0
+  const analyticsQuantityNum = selectedAnalyticsTools.length
   const analyticsCost = analyticsQuantityNum > 0 ? costPerAnalytics * analyticsQuantityNum : 0
   const totalCosts = 20000 + rdCost + analyticsCost
 
@@ -203,12 +237,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       return
     }
 
-    // Validate analytics quantity (can be 0, but must be a valid number)
-    const analyticsQuantityNum = parseInt(analyticsQuantity)
-    if (analyticsQuantity.trim() !== '' && (isNaN(analyticsQuantityNum) || analyticsQuantityNum < 0)) {
-      alert('Analytics quantity must be a valid number (0 or greater).')
-      return
-    }
+    // Analytics tools validation is handled by checkbox selection, no need to validate here
 
     // Validate R&D strategy if selected
     if (rndStrategy && rndStrategy !== 'skip') {
@@ -335,6 +364,17 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
         })
       }
 
+      // Insert analytics tools purchases into analytics_purchases table
+      if (selectedAnalyticsTools.length > 0) {
+        const analyticsPurchases = selectedAnalyticsTools.map(tool => ({
+          team_id: teamPk,
+          week_number: submissionData.week_number,
+          tool_type: tool,
+          cost: costPerAnalytics,
+        }))
+        await supabase.from('analytics_purchases').insert(analyticsPurchases)
+      }
+
       console.log('✅ Decisions submitted successfully!')
       console.log('Database response:', data)
 
@@ -391,8 +431,8 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       setRndSelections([])
       setRndSelectionCounter(0)
       setFirstTestFailed(false)
-      setAnalyticsPurchased(false)
-      setAnalyticsQuantity('0')
+      setSelectedAnalyticsTools([])
+      setAnalyticsCategory('All')
     } catch (err) {
       console.error('❌ Exception during submission:', err)
       alert('Error submitting decisions')
@@ -645,31 +685,136 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
           <p className="text-sm text-gray-600 mb-4">Enhance your decision-making</p>
           <div className="space-y-4">
             <div className="p-4 border-2 border-gray-200 rounded-xl transition-all">
-              <label className="font-semibold text-[15px] block mb-3 text-gray-800">Analytics Tools: <span className="text-[#E63946]">{analyticsQuantity}</span> units</label>
-              <div className="flex items-center gap-3">
+              <label className="font-semibold text-[15px] block mb-3 text-gray-800">
+                Analytics Tools: <span className="text-[#E63946]">{selectedAnalyticsTools.length}</span> selected
+                {selectedAnalyticsTools.length > 0 && (
+                  <span className="text-sm text-gray-600 ml-2">
+                    (฿{(selectedAnalyticsTools.length * costPerAnalytics).toLocaleString()})
+                  </span>
+                )}
+              </label>
+              <p className="text-xs text-gray-500 mb-4">Select analytics tools to purchase (฿{costPerAnalytics.toLocaleString()} each)</p>
+              
+              {/* Selected Tools Chips */}
+              {selectedAnalyticsTools.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">Selected Tools:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedAnalyticsTools.map((toolName, idx) => {
+                      const tool = ANALYTICS_TOOLS.find(t => t.fullName === toolName)
+                      return (
+                        <div
+                          key={idx}
+                          className="inline-flex items-center gap-2 bg-[#E63946] text-white px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm"
+                        >
+                          <span className="text-xs bg-white/20 text-white px-1.5 py-0.5 rounded">
+                            {tool?.category || 'Tool'}
+                          </span>
+                          <span className="max-w-[200px] truncate">
+                            {tool ? `${tool.operation} of ${tool.metrics.join(' & ')}` : toolName}
+                          </span>
+                          {!hasSubmitted && (
+                            <button
+                              onClick={() => {
+                                setSelectedAnalyticsTools(selectedAnalyticsTools.filter((_, i) => i !== idx))
+                              }}
+                              className="ml-1 hover:bg-white/20 rounded-full w-5 h-5 flex items-center justify-center transition-all text-white font-bold"
+                              title="Remove this tool"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Filter Chips */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Category:</label>
+                <div className="flex flex-wrap gap-2">
+                  {ANALYTICS_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setAnalyticsCategory(cat)}
+                      disabled={hasSubmitted}
+                      className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                        analyticsCategory === cat
+                          ? 'bg-[#E63946] text-white shadow-md'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Filtered Tools List */}
+              <div className="max-h-[400px] overflow-y-auto space-y-2 border border-gray-200 rounded-lg p-4">
+                {ANALYTICS_TOOLS
+                  .filter(tool => {
+                    const matchesCategory = analyticsCategory === 'All' || tool.category === analyticsCategory
+                    return matchesCategory
+                  })
+                  .map((tool, index) => {
+                    const isSelected = selectedAnalyticsTools.includes(tool.fullName)
+                    return (
+                      <label
+                        key={index}
+                        className={`flex items-start p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-blue-50 border-blue-400'
+                            : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
+                        } ${hasSubmitted ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  min="0"
-                  value={analyticsQuantity}
+                          type="checkbox"
+                          checked={isSelected}
                   onChange={(e) => {
-                    const value = e.target.value
-                    // Allow empty string or non-negative integers
-                    if (value === '' || /^\d+$/.test(value)) {
-                      setAnalyticsQuantity(value)
-                    }
-                  }}
-                  onBlur={(e) => {
-                    // Validate and set to 0 if empty or invalid
-                    const num = parseInt(e.target.value)
-                    if (!e.target.value || e.target.value.trim() === '' || isNaN(num) || num < 0) {
-                      setAnalyticsQuantity('0')
+                            if (hasSubmitted) return
+                            if (e.target.checked) {
+                              setSelectedAnalyticsTools([...selectedAnalyticsTools, tool.fullName])
+                            } else {
+                              setSelectedAnalyticsTools(selectedAnalyticsTools.filter(t => t !== tool.fullName))
                     }
                   }}
                   disabled={hasSubmitted}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#E63946] focus:ring-2 focus:ring-[#E63946]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                  placeholder="Enter quantity"
-                />
+                          className="mt-1 mr-3 w-4 h-4 accent-[#E63946] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-semibold px-2 py-0.5 bg-purple-100 text-purple-700 rounded">
+                              {tool.category}
+                            </span>
+                            <span className="text-xs font-semibold px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                              {tool.operation}
+                            </span>
+                            <span className="text-xs font-semibold px-2 py-0.5 bg-green-100 text-green-700 rounded">
+                              {tool.chart}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-800 font-medium">
+                            {tool.operation} of {tool.metrics.join(' and ')}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            by {tool.breakdown}
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                {ANALYTICS_TOOLS.filter(tool => {
+                  const matchesCategory = analyticsCategory === 'All' || tool.category === analyticsCategory
+                  return matchesCategory
+                }).length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <p>No analytics tools found in this category.</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -726,7 +871,20 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 )}
                 <div className="pb-5 border-b border-gray-200">
                   <div className="font-['Poppins'] font-bold text-base text-black mb-2">Analytics Tools</div>
-                  <div className="text-sm text-gray-600">{analyticsQuantityNum > 0 ? `${analyticsQuantityNum} units` : 'No'}</div>
+                  <div className="text-sm text-gray-600">
+                    {selectedAnalyticsTools.length > 0 ? (
+                      <div>
+                        <div className="mb-2">{selectedAnalyticsTools.length} tool(s) selected</div>
+                        <div className="max-h-[200px] overflow-y-auto space-y-1">
+                          {selectedAnalyticsTools.map((tool, idx) => (
+                            <div key={idx} className="text-xs bg-gray-50 p-2 rounded border border-gray-200">
+                              • {tool}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : 'No analytics tools selected'}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-3 mt-6">

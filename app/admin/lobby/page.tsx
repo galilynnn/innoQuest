@@ -9,11 +9,8 @@ import WeekProgression from "@/components/admin/week-progression";
 import Link from "next/link";
 import GameMonitoring from "@/components/admin/game-monitoring";
 
-type TabType = "lobby" | "week" | "monitoring";
-
 export default function AdminPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>("lobby");
 
   useEffect(() => {
     // Check if admin is logged in
@@ -40,7 +37,7 @@ export default function AdminPage() {
         <div className="mb-8 flex justify-between items-center">
           <div>
             <h1 className="text-4xl font-serif font-bold mb-2">Admin Dashboard</h1>
-            <p className="text-muted-foreground">Manage lobby and week progression</p>
+            <p className="text-muted-foreground">Manage lobby, week progression, and live monitoring</p>
           </div>
           <div className="flex gap-3">
             <button
@@ -57,28 +54,33 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="flex border-b border-border mb-8 overflow-x-auto">
-          {(["lobby", "week", "monitoring"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-3 font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab === "lobby" && "Game Lobby"}
-              {tab === "week" && "Week Progression"}
-              {tab === "monitoring" && "Live Monitoring"}
-            </button>
-          ))}
-        </div>
+        <div className="space-y-8">
+          {/* Game Lobby Section */}
+          <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+              <div className="w-1 h-8 bg-gradient-to-b from-[#E63946] to-[#C1121F] rounded-full"></div>
+              <h2 className="text-2xl font-serif font-bold text-gray-900">Game Lobby</h2>
+            </div>
+            <LobbyControl />
+          </section>
 
-        <div className="space-y-6">
-          {activeTab === "lobby" && <LobbyControl />}
-          {activeTab === "week" && <WeekProgression />}
-          {activeTab === "monitoring" && <GameMonitoring gameId="00000000-0000-0000-0000-000000000001" />}
+          {/* Week Progression Section */}
+          <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+              <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-blue-700 rounded-full"></div>
+              <h2 className="text-2xl font-serif font-bold text-gray-900">Week Progression</h2>
+            </div>
+            <WeekProgression />
+          </section>
+
+          {/* Live Monitoring Section */}
+          <section className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6">
+            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
+              <div className="w-1 h-8 bg-gradient-to-b from-green-500 to-green-700 rounded-full"></div>
+              <h2 className="text-2xl font-serif font-bold text-gray-900">Live Monitoring</h2>
+            </div>
+            <GameMonitoring gameId="00000000-0000-0000-0000-000000000001" />
+          </section>
         </div>
       </div>
     </div>
