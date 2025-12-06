@@ -43,3 +43,4 @@ END $$;
 -- GRANT SELECT, INSERT ON analytics_purchases TO authenticated;
 -- GRANT SELECT, INSERT ON analytics_purchases TO anon;
 
+

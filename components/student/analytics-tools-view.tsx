@@ -106,9 +106,10 @@ export default function AnalyticsToolsView({ team, gameSettings }: AnalyticsTool
 
   const availableWeeks = Object.keys(toolsByWeek).map(Number).sort((a, b) => b - a)
 
-  // Tools available for current week (purchased in previous weeks)
+  // Tools available for current week (purchased exactly one week before)
+  // If bought in week N, only available in week N+1, then gone
   const previousWeek = gameSettings.current_week - 1
-  const availableTools = purchasedTools.filter(tool => tool.week_number < gameSettings.current_week)
+  const availableTools = purchasedTools.filter(tool => tool.week_number === previousWeek)
   
   // Tools purchased this week (will be available next week)
   const toolsPurchasedThisWeek = purchasedTools.filter(tool => tool.week_number === gameSettings.current_week)
@@ -163,7 +164,7 @@ export default function AnalyticsToolsView({ team, gameSettings }: AnalyticsTool
             </span>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Tools purchased in previous weeks that you can use in the current round
+            Tools purchased in Week {previousWeek} that you can use in this round only. They will expire after this week.
           </p>
           
           {availableTools.length === 0 ? (

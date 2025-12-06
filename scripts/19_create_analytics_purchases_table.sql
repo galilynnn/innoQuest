@@ -29,3 +29,4 @@ COMMENT ON COLUMN analytics_purchases.week_number IS 'The week number when the t
 COMMENT ON COLUMN analytics_purchases.tool_type IS 'Full name/description of the analytics tool';
 COMMENT ON COLUMN analytics_purchases.cost IS 'Cost of the tool in this purchase';
 
+

@@ -22,3 +22,4 @@ ALTER TABLE analytics_purchases DISABLE ROW LEVEL SECURITY;
 -- GRANT ALL ON analytics_purchases TO authenticated;
 -- GRANT ALL ON analytics_purchases TO anon;
 
+
