@@ -3,14 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { calculateWeeklyResults, processRndTest, calculateDemand, calculateRevenue, determineFundingStatus, calculateBalanceAward } from '@/lib/game-calculations'
 
 export async function POST(request: NextRequest) {
-  console.log('🚀 ============================================')
-  console.log('🚀 ADVANCE WEEK API CALLED')
-  console.log('🚀 ============================================')
   
   try {
     const { gameId } = await request.json()
     
-    console.log('📝 Request gameId:', gameId)
 
     if (!gameId) {
       return NextResponse.json(
@@ -46,14 +42,6 @@ export async function POST(request: NextRequest) {
     // Check if we're on the last week - this should just end the game, not advance further
     const isLastWeek = settings.current_week === settings.total_weeks
 
-    console.log('Game settings:', {
-      game_id: settings.game_id,
-      game_status: settings.game_status,
-      current_week: settings.current_week,
-      total_weeks: settings.total_weeks,
-      isLastWeek
-    })
-
     // Get all teams
     const { data: teams, error: teamsError } = await supabase
       .from('teams')
@@ -68,12 +56,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Total teams found:', teams?.length)
     
     // Count teams that have joined the game (have any last_activity)
     const teamsInGame = teams?.filter(t => t.last_activity !== null) || []
     
-    console.log('Teams that have joined:', teamsInGame.length)
     
     if (teamsInGame.length === 0) {
       return NextResponse.json(
@@ -86,27 +72,10 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // For active game status, check for recently active teams
-    const now = new Date()
-    const twoMinutesAgo = new Date(now.getTime() - 120000)
-    
-    // Log each team's activity status with more details
-    teamsInGame.forEach(t => {
-      const lastActivityDate = new Date(t.last_activity)
-      const diffMs = now.getTime() - lastActivityDate.getTime()
-      const diffSeconds = Math.floor(diffMs / 1000)
-      console.log(`Team ${t.team_name}:`, {
-        last_activity: t.last_activity,
-        diff_seconds: diffSeconds
-      })
-    })
-
     // Process ALL teams that have joined the game (not just actively online ones)
     // This is better for turn-based gameplay where students don't need to be online
     const teamsToProcess = teamsInGame
 
-    console.log('Teams to process:', teamsToProcess.map(t => t.team_name).join(', '))
-    console.log('Teams count:', teamsToProcess.length)
 
     // Fetch game settings for R&D tier configuration, investment config, and admin-set values
     const { data: gameSettingsData, error: settingsDataError } = await supabase
@@ -116,29 +85,19 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (settingsDataError) {
-      console.warn('Failed to fetch game configs:', settingsDataError)
-      console.warn('This will cause calculations to fail!')
+      // Settings error handled below
     }
 
-    console.log('📦 Raw game settings data:', gameSettingsData)
 
     const rndTierConfig = gameSettingsData?.rnd_tier_config || undefined
     const investmentConfig = gameSettingsData?.investment_config || undefined
     const populationSize = gameSettingsData?.population_size || 10000
     const costPerAnalytics = gameSettingsData?.analytics_cost || 5000
-    const initialCapital = gameSettingsData?.initial_capital || 0
+    // Get initial_capital - this is the exact value admin sets in the dashboard
+    // Convert to number in case it's stored as string in database
+    const initialCapitalRaw = gameSettingsData?.initial_capital
+    const initialCapital = initialCapitalRaw != null ? Number(initialCapitalRaw) : 0
 
-    console.log('⚙️ ============================================')
-    console.log('⚙️ GAME CONFIGURATION LOADED')
-    console.log('⚙️ ============================================')
-    console.log('⚙️ RND Tier Config exists:', !!rndTierConfig)
-    console.log('⚙️ RND Tier Config keys:', rndTierConfig ? Object.keys(rndTierConfig) : 'NONE')
-    console.log('⚙️ RND Tier Config data:', JSON.stringify(rndTierConfig, null, 2))
-    console.log('⚙️ Investment Config exists:', !!investmentConfig)
-    console.log('⚙️ Investment Config keys:', investmentConfig ? Object.keys(investmentConfig) : 'NONE')
-    console.log('⚙️ Population Size:', populationSize)
-    console.log('⚙️ Cost Per Analytics:', costPerAnalytics)
-    console.log('⚙️ ============================================')
 
     // Process calculations for ALL teams that have joined the game
     const updates = []
@@ -151,9 +110,60 @@ export async function POST(request: NextRequest) {
       timestamp: number
     }> = []
     
+    // Track teams that lost rounds (insufficient balance) - these should NOT get milestone awards
+    const teamsThatLostRound: Set<string> = new Set()
+    
+    // Track final balances after reset for teams that lost (to prevent milestone processing from overwriting)
+    const finalBalancesAfterLoss: Map<string, number> = new Map()
+    
     for (const team of teamsToProcess) {
       try {
-        console.log(`🔍 Processing team: ${team.team_name}, team.team_id: ${team.team_id}`)
+        
+        // FIRST: Check if team lost the PREVIOUS week and needs balance reset
+        // This handles the case where the week was already advanced but balance wasn't reset
+        if (settings.current_week > 1) {
+          const previousWeek = settings.current_week - 1
+          const { data: previousWeekResult } = await supabase
+            .from('weekly_results')
+            .select('revenue, demand, pass_fail_status')
+            .eq('team_id', team.team_id)
+            .eq('week_number', previousWeek)
+            .maybeSingle()
+          
+          if (previousWeekResult && 
+              previousWeekResult.revenue === 0 && 
+              previousWeekResult.demand === 0 && 
+              previousWeekResult.pass_fail_status === 'fail') {
+            // Team lost previous week - check if balance needs to be reset
+            const currentBalance = team.total_balance || 0
+            if (currentBalance !== initialCapital && initialCapital > 0) {
+              
+              // Reset balance immediately
+              await supabase
+                .from('teams')
+                .update({
+                  total_balance: initialCapital,
+                  funding_stage: 'Pre-Seed',
+                  successful_rnd_tests: 0,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('team_id', team.team_id)
+              
+              // Reload team data to get updated balance
+              const { data: updatedTeam } = await supabase
+                .from('teams')
+                .select('total_balance, funding_stage, successful_rnd_tests')
+                .eq('team_id', team.team_id)
+                .single()
+              
+              if (updatedTeam) {
+                team.total_balance = updatedTeam.total_balance
+                team.funding_stage = updatedTeam.funding_stage
+                team.successful_rnd_tests = updatedTeam.successful_rnd_tests
+              }
+            }
+          }
+        }
         
         // Get team's pending decisions for current week from weekly_results
         // Use team_id column (teams_id was removed from database)
@@ -164,7 +174,7 @@ export async function POST(request: NextRequest) {
           .eq('week_number', settings.current_week)
           .maybeSingle()
 
-        console.log(`📋 Weekly result query for ${team.team_name}:`, {
+        console.log({
           found: !!weeklyResult,
           error: weeklyResultError?.message,
           team_id: team.team_id,
@@ -172,11 +182,10 @@ export async function POST(request: NextRequest) {
         })
 
         if (!weeklyResult) {
-          console.log(`⚠️ Team ${team.team_name} did not submit decisions for week ${settings.current_week}`)
           continue
         }
         
-        console.log(`✅ Found submission for ${team.team_name}:`, {
+        console.log({
           rnd_tier: weeklyResult.rnd_tier,
           set_price: weeklyResult.set_price,
           week_number: weeklyResult.week_number
@@ -200,12 +209,11 @@ export async function POST(request: NextRequest) {
            }
         }
 
-        console.log(`📊 Team ${team.team_name} assigned product ID: ${productId}`)
 
         // Calculate average purchase probability for this team's product
         // Query customer_purchase_probabilities using UUID product_id
         // team.assigned_product_id is the UUID from products table
-        console.log(`🔍 Querying probabilities with:`, {
+        console.log({
           game_id: gameId,
           team_id: team.team_id,
           product_id: team.assigned_product_id,
@@ -221,7 +229,6 @@ export async function POST(request: NextRequest) {
         let avgPurchaseProbability: number | null = null // null means not calculated yet
         
         if (team.assigned_product_id && weeklyResult.set_price) {
-          console.log(`🔄 Calculating probabilities for ${team.team_name} with current week price: ${weeklyResult.set_price}`)
           
           try {
             const { error: recalcError } = await supabase.rpc('calculate_purchase_probabilities', {
@@ -233,9 +240,7 @@ export async function POST(request: NextRequest) {
             
             if (recalcError) {
               console.error(`❌ Failed to calculate probabilities:`, recalcError)
-              console.warn(`⚠️ Will try to use existing probabilities or default 0.5`)
             } else {
-              console.log(`✅ Probabilities calculated for ${team.team_name} with price ${weeklyResult.set_price}`)
               // Small delay to ensure database transaction is committed
               await new Promise(resolve => setTimeout(resolve, 100))
             }
@@ -252,7 +257,7 @@ export async function POST(request: NextRequest) {
           .eq('team_id', team.team_id)
           .eq('product_id', team.assigned_product_id)
 
-        console.log(`📊 Probability query result for ${team.team_name}:`, {
+        console.log({
           found: probabilities?.length || 0,
           error: probError?.message,
           sample: probabilities?.[0],
@@ -269,7 +274,7 @@ export async function POST(request: NextRequest) {
           const uniqueProbabilities = [...new Set(probabilities.map(p => p.purchase_probability || 0))]
           const allSame = uniqueProbabilities.length === 1
           
-          console.log(`✅ Calculated avg purchase probability for ${team.team_name}:`, {
+          console.log({
             count: probabilities.length,
             avgProbability: avgPurchaseProbability,
             minProbability: Math.min(...probabilities.map(p => p.purchase_probability || 0)),
@@ -291,7 +296,7 @@ export async function POST(request: NextRequest) {
           // Only use default if probabilities don't exist at all (calculation failed)
           // If probabilities exist but are 0, we should use 0, not default
           avgPurchaseProbability = 0.5 // Default fallback only when no probabilities found
-          console.warn(`⚠️ No probabilities found for ${team.team_name}, using default 0.5%`, {
+          console.log({
             error: probError?.message,
             team_id: team.team_id,
             product_uuid: team.assigned_product_id,
@@ -307,7 +312,6 @@ export async function POST(request: NextRequest) {
         // Run calculations using the game calculation engine
         // IMPORTANT: avgPurchaseProbability is a percentage (0-100), where 0 means 0% and 100 means 100%
         // If probabilities are 0 (high price scenario), avgPurchaseProbability should be 0
-        console.log(`🎯 Final avgPurchaseProbability for ${team.team_name}: ${avgPurchaseProbability}% (will be used in demand calculation)`)
         
         const calculationInput = {
           product_id: productId,
@@ -327,7 +331,7 @@ export async function POST(request: NextRequest) {
           avg_purchase_probability: avgPurchaseProbability, // This is a percentage (0-100)
         }
 
-        console.log(`🎯 Calculation input for ${team.team_name}:`, {
+        console.log({
           set_price: calculationInput.set_price,
           avg_purchase_probability: avgPurchaseProbability,
           population_size: populationSize,
@@ -336,22 +340,18 @@ export async function POST(request: NextRequest) {
           has_investment_config: !!investmentConfig,
         })
 
-        console.log(`🔧 Full calculation input for ${team.team_name}:`)
-        console.log(JSON.stringify(calculationInput, null, 2))
 
         let results
         let firstTest: any = null
         let secondTest: any = null
         try {
-          console.log(`⚡ Starting calculation for ${team.team_name}...`)
           // If the student selected a second R&D tier, evaluate both tests
           // to support 'two-always' and 'two-if-fail' strategies.
           if (weeklyResult.rnd_tier_2) {
-            console.log('🔬 Processing two-test R&D strategy:', weeklyResult.rnd_strategy)
 
             // Run the first test explicitly
             firstTest = processRndTest(weeklyResult.rnd_tier, rndTierConfig)
-            console.log(`🔬 First R&D test result:`, {
+            console.log({
               tier: weeklyResult.rnd_tier,
               success: firstTest.success,
               cost: firstTest.cost,
@@ -363,7 +363,7 @@ export async function POST(request: NextRequest) {
             // For "two-always": always run second test
             const runSecond = (weeklyResult.rnd_strategy === 'two-always') || (weeklyResult.rnd_strategy === 'two-if-fail' && !firstTest.success)
             
-            console.log(`🔬 Second test decision:`, {
+            console.log({
               strategy: weeklyResult.rnd_strategy,
               firstTestSuccess: firstTest.success,
               runSecond: runSecond,
@@ -376,7 +376,7 @@ export async function POST(request: NextRequest) {
 
             if (runSecond) {
               secondTest = processRndTest(weeklyResult.rnd_tier_2, rndTierConfig)
-              console.log(`🔬 Second R&D test executed:`, {
+              console.log({
                 tier: weeklyResult.rnd_tier_2,
                 success: secondTest.success,
                 cost: secondTest.cost,
@@ -385,8 +385,6 @@ export async function POST(request: NextRequest) {
             } else {
               // Explicitly set secondTest to null to ensure it's not used later
               secondTest = null
-              console.log(`🔬 Second R&D test skipped (strategy: ${weeklyResult.rnd_strategy}, first test success: ${firstTest.success})`)
-              console.log(`🔬 secondTest is now:`, secondTest)
             }
 
             // Now compute combined results: pick the highest multiplier among successful tests,
@@ -400,22 +398,20 @@ export async function POST(request: NextRequest) {
             const successProbability = firstTest.success ? firstTest.successProbability : (secondTest ? secondTest.successProbability : firstTest.successProbability)
 
             // Recreate the same calculations the main engine does, but using the combined values
-            console.log(`💰 ===== REVENUE CALCULATION FOR ${team.team_name} =====`)
-            console.log(`📊 Step 1 - Calculate Base Demand:`, {
+            console.log({
               formula: '(population_size × avg_probability) / 100',
               avg_probability: calculationInput.avg_purchase_probability,
               population_size: calculationInput.population_size,
               calculation: `(${calculationInput.population_size} × ${calculationInput.avg_purchase_probability}) / 100`
             })
             const baseDemand = calculateDemand(calculationInput.avg_purchase_probability, calculationInput.population_size)
-            console.log(`✅ Base Demand Result: ${baseDemand} units`)
             
             // Apply R&D multiplier to demand (if any test succeeded, use the highest multiplier)
             let demand = baseDemand
             if (combinedSuccess || firstTest || secondTest) {
               const demandBeforeMultiplier = demand
               demand = Math.round(demand * combinedMultiplier)
-              console.log(`🔬 Step 1.5 - Apply R&D Multiplier:`, {
+              console.log({
                 rnd_success: combinedSuccess,
                 multiplier: combinedMultiplier,
                 demand_before: demandBeforeMultiplier,
@@ -424,15 +420,13 @@ export async function POST(request: NextRequest) {
               })
             }
             
-            console.log(`📊 Step 2 - Calculate Revenue:`, {
+            console.log({
               formula: 'demand × price',
               demand: demand,
               price: calculationInput.set_price,
               calculation: `${demand} × ${calculationInput.set_price}`
             })
             let revenue = calculateRevenue(demand, calculationInput.set_price)
-            console.log(`✅ Revenue Result: ฿${revenue.toLocaleString()}`)
-            console.log(`💰 ==========================================`)
             
             // Calculate costs - NO operating cost, only R&D and analytics
             const analyticsCost = (calculationInput.analytics_quantity || 0) * (calculationInput.cost_per_analytics || 5000)
@@ -444,12 +438,14 @@ export async function POST(request: NextRequest) {
             
             let profit: number
             if (isInsufficient) {
-              console.log(`⚠️ Team ${team.team_name} has insufficient balance!`, {
+              // Mark this team as having lost the round
+              teamsThatLostRound.add(team.team_id)
+              
+              console.log({
                 totalCosts,
                 currentBalance,
                 deficit: totalCosts - currentBalance
               })
-              console.log(`🔄 Team ${team.team_name} lost the round - setting revenue/demand to 0, R&D to fail`)
               
               // Set revenue and demand to 0 (even if price is ok)
               revenue = 0
@@ -507,16 +503,26 @@ export async function POST(request: NextRequest) {
             // Single R&D test path
             // Check if team has insufficient balance first
             const currentBalance = team.total_balance || 0
-            const estimatedCosts = (calculationInput.rnd_tier ? (rndTierConfig?.[calculationInput.rnd_tier as keyof typeof rndTierConfig]?.min_cost || 0) : 0) + (calculationInput.analytics_quantity || 0) * costPerAnalytics
-            const isInsufficient = estimatedCosts > currentBalance
+            
+            // Calculate actual attempted costs (what they tried to spend)
+            let attemptedRndCost = 0
+            if (calculationInput.rnd_tier) {
+              // Get actual R&D cost that would be charged (not just min_cost estimate)
+              const rndTest = processRndTest(calculationInput.rnd_tier, rndTierConfig)
+              attemptedRndCost = rndTest.cost
+            }
+            const analyticsCost = (calculationInput.analytics_quantity || 0) * costPerAnalytics
+            const attemptedTotalCosts = attemptedRndCost + analyticsCost
+            const isInsufficient = attemptedTotalCosts > currentBalance
             
             if (isInsufficient) {
-              console.log(`⚠️ Team ${team.team_name} has insufficient balance for single R&D!`, {
-                estimatedCosts,
+              console.log({
+                attemptedTotalCosts,
+                attemptedRndCost,
+                analyticsCost,
                 currentBalance,
-                deficit: estimatedCosts - currentBalance
+                deficit: attemptedTotalCosts - currentBalance
               })
-              console.log(`🔄 Team ${team.team_name} lost the round - setting revenue/demand to 0, R&D to fail`)
               
               // Set R&D to fail automatically (don't run R&D if insufficient balance)
               calculationInput.rnd_tier = undefined // Don't run R&D
@@ -526,11 +532,16 @@ export async function POST(request: NextRequest) {
             
             // Override results if insufficient
             if (isInsufficient) {
+              // Mark this team as having lost the round
+              teamsThatLostRound.add(team.team_id)
+              
               results.demand = 0
               results.revenue = 0
               results.rnd_tested = false
               results.rnd_success = false
               results.rnd_cost = 0
+              results.total_costs = attemptedTotalCosts // IMPORTANT: Set to attempted costs, not calculated costs
+              results.profit = -attemptedTotalCosts // Loss equals attempted costs
               results.pass_fail_status = 'fail'
               results.bonus = 0
               results.rnd_success_probability = undefined
@@ -549,7 +560,7 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          console.log(`💰 Calculation results for ${team.team_name}:`, {
+          console.log({
             demand: results.demand,
             revenue: results.revenue,
             costs: results.total_costs,
@@ -563,7 +574,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Update weekly_results with calculated values
-        const { data: updateData, error: updateError } = await supabase
+        const { data: weeklyUpdateData, error: weeklyUpdateError } = await supabase
           .from('weekly_results')
           .update({
             demand: results.demand,
@@ -579,13 +590,12 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', weeklyResult.id)
         
-        if (updateError) {
-          console.error(`❌ Failed to update weekly_results for ${team.team_name}:`, updateError)
-          throw new Error(`Database update failed: ${updateError.message}`)
+        if (weeklyUpdateError) {
+          console.error(`❌ Failed to update weekly_results for ${team.team_name}:`, weeklyUpdateError)
+          throw new Error(`Database update failed: ${weeklyUpdateError.message}`)
         }
         
-        console.log(`✅ Successfully updated weekly_results for ${team.team_name}`)
-        console.log(`📊 Updated values:`, {
+        console.log({
           demand: results.demand,
           revenue: results.revenue,
           rnd_success: results.rnd_success,
@@ -594,9 +604,8 @@ export async function POST(request: NextRequest) {
           rnd_multiplier: results.rnd_multiplier,
         })
         
-          // Update rnd_tests table so test history reflects the calculated result
-          try {
-            console.log('🔁 Updating rnd_tests with roll result for', team.team_name)
+        // Update rnd_tests table so test history reflects the calculated result
+        try {
             
             // Update first test result
             const { data: rndUpdate, error: rndUpdateError } = await supabase
@@ -606,11 +615,9 @@ export async function POST(request: NextRequest) {
               .eq('week_number', settings.current_week)
               .eq('tier', weeklyResult.rnd_tier)
 
-            if (rndUpdateError) console.warn('⚠️ rnd_tests update error:', rndUpdateError)
-            else console.log('🔁 rnd_tests updated:', rndUpdate)
             
             // For "two-if-fail" strategy: only insert second test if first test failed and second test was run
-            console.log('🔁 Checking if second test should be inserted:', {
+            console.log({
               strategy: weeklyResult.rnd_strategy,
               isTwoIfFail: weeklyResult.rnd_strategy === 'two-if-fail',
               hasSecondTest: !!secondTest,
@@ -619,8 +626,7 @@ export async function POST(request: NextRequest) {
             })
             
             if (weeklyResult.rnd_strategy === 'two-if-fail' && secondTest && !firstTest.success) {
-              console.log('🔁 Inserting second R&D test for two-if-fail strategy (first test failed)')
-              console.log('🔁 Second test details:', {
+              console.log({
                 team_id: team.team_id,
                 week_number: settings.current_week,
                 tier: weeklyResult.rnd_tier_2,
@@ -638,17 +644,13 @@ export async function POST(request: NextRequest) {
               if (secondRndError) {
                 console.error('❌ Second rnd_tests insert error:', secondRndError)
               } else {
-                console.log('✅ Second rnd_tests inserted successfully:', secondRndInsert)
               }
             } else if (weeklyResult.rnd_strategy === 'two-if-fail' && !secondTest && firstTest.success) {
-              console.log('✅ Second test correctly skipped (first test passed)')
             } else if (weeklyResult.rnd_strategy === 'two-if-fail' && !secondTest && !firstTest.success) {
-              console.warn('⚠️ WARNING: First test failed but secondTest is null! This should not happen.')
             }
             
             // For "two-always" strategy: update second test result (it was already inserted during submission)
             if (weeklyResult.rnd_strategy === 'two-always' && secondTest && weeklyResult.rnd_tier_2) {
-              console.log('🔁 Updating second R&D test for two-always strategy')
               const { data: secondRndUpdate, error: secondRndUpdateError } = await supabase
                 .from('rnd_tests')
                 .update({ success: secondTest.success })
@@ -656,31 +658,81 @@ export async function POST(request: NextRequest) {
                 .eq('week_number', settings.current_week)
                 .eq('tier', weeklyResult.rnd_tier_2)
               
-              if (secondRndUpdateError) console.warn('⚠️ Second rnd_tests update error:', secondRndUpdateError)
-              else console.log('🔁 Second rnd_tests updated:', secondRndUpdate)
             }
           } catch (err) {
             console.error('❌ Error updating rnd_tests:', err)
           }
         
-        // Check if team has insufficient balance - if so, reset to initial stage
+        // Check if team lost the round (insufficient balance) - if so, reset to initial stage
+        // Use the teamsThatLostRound set to directly check if this team lost
+        // Also check results as a fallback
         const currentBalance = team.total_balance || 0
-        const isInsufficient = results.total_costs > currentBalance
+        const lostRoundFromSet = teamsThatLostRound.has(team.team_id)
+        const lostRoundFromResults = results.revenue === 0 && results.demand === 0 && results.pass_fail_status === 'fail'
+        const lostRound = lostRoundFromSet || lostRoundFromResults
+        
+        console.log({
+          lostRoundFromSet,
+          lostRoundFromResults,
+          lostRound,
+          revenue: results.revenue,
+          demand: results.demand,
+          pass_fail_status: results.pass_fail_status,
+          revenueIsZero: results.revenue === 0,
+          demandIsZero: results.demand === 0,
+          statusIsFail: results.pass_fail_status === 'fail',
+          total_costs: results.total_costs,
+          currentBalance
+        })
+        
         
         let newBalance: number
         let newSuccessfulTests: number
         let newFundingStage: string
         
-        if (isInsufficient) {
-          console.log(`⚠️ Team ${team.team_name} has insufficient balance!`, {
+        if (lostRound) {
+          // Use the exact initial_capital value that admin set in game settings
+          // This is the value from admin dashboard (e.g., 200000)
+          // initialCapital is already converted to number when loaded
+          const resetBalance = Number(initialCapital) || 0
+          
+          console.log({
+            initialCapitalRaw: initialCapital,
+            initialCapitalType: typeof initialCapital,
+            resetBalance,
+            resetBalanceType: typeof resetBalance,
+            currentBalance,
+            gameId
+          })
+          
+          if (resetBalance === 0 || isNaN(resetBalance)) {
+            console.error(`❌ ERROR: initial_capital is 0 or invalid for game ${gameId}! Cannot reset balance.`)
+            console.error(`   Please set Initial Capital in admin dashboard.`)
+            console.error(`   Current initialCapital value:`, initialCapital, `Type:`, typeof initialCapital)
+            // Fallback to a default value to prevent balance from being 0
+            newBalance = 500000 // Default fallback
+          } else {
+            newBalance = resetBalance
+          }
+          
+          console.log({
             totalCosts: results.total_costs,
             currentBalance,
-            deficit: results.total_costs - currentBalance
+            deficit: results.total_costs - currentBalance,
+            revenue: results.revenue,
+            demand: results.demand,
+            pass_fail_status: results.pass_fail_status,
+            initialCapitalFromSettings: initialCapital,
+            initialCapitalType: typeof initialCapital,
+            resetBalance: newBalance,
+            resetBalanceType: typeof newBalance,
+            gameId,
+            lostRoundFromSet,
+            lostRoundFromResults
           })
-          console.log(`🔄 Resetting team ${team.team_name} to initial stage (Pre-Seed, balance ${initialCapital}, R&D tests 0)`)
           
           // Reset team to initial stage - use initial_capital from admin settings
-          newBalance = initialCapital
+          // This is the EXACT value admin set in the dashboard (e.g., 200000)
           newSuccessfulTests = 0
           newFundingStage = 'Pre-Seed'
           
@@ -694,6 +746,7 @@ export async function POST(request: NextRequest) {
             secondTest.multiplier = 1.0
           }
         } else {
+          // Normal round - no loss
           // Normal calculation
           newBalance = currentBalance + results.profit
           // Count how many R&D tests were successful this week (supports two-test strategies)
@@ -713,7 +766,7 @@ export async function POST(request: NextRequest) {
             // If strategy is "two-if-fail" and first test passed, secondSuccess remains false (correct behavior)
             successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
             
-            console.log(`📊 Success increment calculation:`, {
+            console.log({
               strategy: weeklyResult.rnd_strategy,
               firstSuccess,
               secondSuccess,
@@ -732,7 +785,8 @@ export async function POST(request: NextRequest) {
         // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier
         
         // Track milestone advancements for balance calculation
-        if (results.funding_advanced && newFundingStage && newFundingStage !== team.funding_stage) {
+        // IMPORTANT: Only add to milestones if team did NOT lose the round
+        if (!lostRound && results.funding_advanced && newFundingStage && newFundingStage !== team.funding_stage) {
           milestoneAdvancements.push({
             team_id: team.team_id,
             team_name: team.team_name,
@@ -741,29 +795,106 @@ export async function POST(request: NextRequest) {
             revenue: results.revenue,
             timestamp: Date.now() // Use timestamp to determine order (first to reach)
           })
+        } else if (lostRound) {
         }
 
-        console.log('🔔 R&D test summary for team:', team.team_name, {
+        console.log({
           firstTest: firstTest ? { success: firstTest.success, cost: firstTest.cost, multiplier: firstTest.multiplier } : null,
           secondTest: secondTest ? { success: secondTest.success, cost: secondTest.cost, multiplier: secondTest.multiplier } : null,
-          isInsufficient,
+          lostRound,
           newSuccessfulTests,
           newBalance,
-          newFundingStage
+          newFundingStage,
+          currentBalance,
+          initialCapital
         })
 
-        const updateResult = await supabase
+        console.log({
+          lostRound,
+          lostRoundFromSet: teamsThatLostRound.has(team.team_id),
+          lostRoundFromResults: results.revenue === 0 && results.demand === 0 && results.pass_fail_status === 'fail',
+          oldBalance: currentBalance,
+          newBalance,
+          oldStage: team.funding_stage,
+          newStage: newFundingStage,
+          oldSuccessfulTests: team.successful_rnd_tests,
+          newSuccessfulTests,
+          initialCapital,
+          initialCapitalType: typeof initialCapital
+        })
+        
+        // CRITICAL: For lost rounds, ensure we're using the exact initialCapital value
+        if (lostRound) {
+          const expectedBalance = Number(initialCapital) || 0
+          if (newBalance !== expectedBalance && expectedBalance > 0) {
+            console.error(`❌❌ CRITICAL: newBalance mismatch for lost round!`)
+            console.error(`   Expected: ${expectedBalance}, Got: ${newBalance}`)
+            console.error(`   FORCING balance to initialCapital: ${expectedBalance}`)
+            newBalance = expectedBalance
+          }
+          
+          console.log({
+            initialCapital,
+            initialCapitalNumber: Number(initialCapital),
+            newBalance,
+            newBalanceNumber: Number(newBalance),
+            currentBalance,
+            teamId: team.team_id,
+            match: Number(newBalance) === Number(initialCapital)
+          })
+        }
+        
+        console.log({
+          lostRound,
+          newBalance,
+          newBalanceNumber: Number(newBalance),
+          newBalanceType: typeof newBalance,
+          initialCapital,
+          initialCapitalNumber: Number(initialCapital),
+          initialCapitalType: typeof initialCapital
+        })
+        
+        const { data: teamUpdateData, error: teamUpdateError } = await supabase
           .from('teams')
           .update({
-            total_balance: newBalance,
+            total_balance: Number(newBalance), // Ensure it's a number, not string
             successful_rnd_tests: newSuccessfulTests,
             funding_stage: newFundingStage,
             bonus_multiplier_pending: null, // Clear the bonus after applying it
             updated_at: new Date().toISOString()
           })
           .eq('team_id', team.team_id)
+          .select()
           
-        console.log(`✅ Calculated results for ${team.team_name}:`, {
+        if (teamUpdateError) {
+          console.error(`❌ Failed to update team ${team.team_name}:`, teamUpdateError)
+          throw new Error(`Database update failed: ${teamUpdateError.message}`)
+        }
+        
+        // Verify the update was successful, especially for lost rounds
+        if (lostRound && teamUpdateData && teamUpdateData.length > 0) {
+          const updatedBalance = teamUpdateData[0].total_balance
+          const balanceMatch = Number(updatedBalance) === Number(newBalance)
+          
+          console.log({
+            expectedBalance: newBalance,
+            actualBalanceInDB: updatedBalance,
+            match: balanceMatch,
+            initialCapitalUsed: initialCapital,
+            updateData: teamUpdateData[0]
+          })
+          
+          if (!balanceMatch) {
+            console.error(`❌❌ MISMATCH: Balance was not set correctly! Expected ${newBalance}, got ${updatedBalance}`)
+            console.error(`   This is a CRITICAL ERROR - balance reset failed!`)
+          } else {
+            // Store the final balance to prevent milestone processing from overwriting it
+            finalBalancesAfterLoss.set(team.team_id, Number(newBalance))
+          }
+        }
+        
+        console.log({
+          updateData: teamUpdateData,
           revenue: results.revenue,
           costs: results.total_costs,
           profit: results.profit,
@@ -774,9 +905,11 @@ export async function POST(request: NextRequest) {
           new_stage: newFundingStage,
           funding_advanced: results.funding_advanced,
           bonus_multiplier_applied: results.bonus_multiplier_applied,
+          lostRound,
+          balanceReset: lostRound ? `Reset to ${newBalance} (initialCapital: ${initialCapital})` : `Updated to ${newBalance}`
         })
-
-        updates.push(updateResult)
+        
+        updates.push({ data: teamUpdateData, error: teamUpdateError })
       } catch (error) {
         console.error(`Error processing team ${team.team_name}:`, error)
         updates.push({ error })
@@ -791,7 +924,6 @@ export async function POST(request: NextRequest) {
 
     // Process milestone achievements and calculate balance awards
     if (milestoneAdvancements.length > 0 && investmentConfig) {
-      console.log('🏆 Processing milestone achievements:', milestoneAdvancements.length)
       
       // Group advancements by milestone stage
       const milestonesByStage: Record<string, typeof milestoneAdvancements> = {}
@@ -817,7 +949,6 @@ export async function POST(request: NextRequest) {
         
         const configKey = stageConfigMap[milestoneStage]
         if (!configKey || !investmentConfig[configKey]) {
-          console.warn(`⚠️ No investment config found for milestone: ${milestoneStage}`)
           continue
         }
         
@@ -828,7 +959,7 @@ export async function POST(request: NextRequest) {
         // SD = mean × (sd_percent / 100)
         const actualSD = stageConfig.mean * (stageConfig.sd_percent / 100)
         
-        console.log(`🎯 Processing ${milestoneStage} milestone for ${advancements.length} teams`, {
+        console.log({
           mean: stageConfig.mean,
           sd_percent: stageConfig.sd_percent,
           calculated_sd: actualSD,
@@ -850,7 +981,6 @@ export async function POST(request: NextRequest) {
             .maybeSingle()
           
           if (existingAchievement) {
-            console.log(`⚠️ Milestone ${milestoneStage} rank ${rank} already awarded, skipping`)
             continue
           }
           
@@ -862,7 +992,7 @@ export async function POST(request: NextRequest) {
             actualSD
           )
           
-          console.log(`💰 Awarding ${milestoneStage} milestone:`, {
+          console.log({
             team: advancement.team_name,
             rank,
             awardAmount,
@@ -889,6 +1019,11 @@ export async function POST(request: NextRequest) {
             continue
           }
           
+          // Skip milestone award if team lost the round this week
+          if (teamsThatLostRound.has(advancement.team_id)) {
+            continue
+          }
+          
           // Update team balance with award
           const { data: currentTeam } = await supabase
             .from('teams')
@@ -897,7 +1032,9 @@ export async function POST(request: NextRequest) {
             .single()
           
           if (currentTeam) {
-            const newBalanceWithAward = (currentTeam.total_balance || 0) + awardAmount
+            // If team lost the round, use the stored final balance instead of current balance
+            const baseBalance = finalBalancesAfterLoss.get(advancement.team_id) || (currentTeam.total_balance || 0)
+            const newBalanceWithAward = baseBalance + awardAmount
             
             const { error: balanceError } = await supabase
               .from('teams')
@@ -910,7 +1047,50 @@ export async function POST(request: NextRequest) {
             if (balanceError) {
               console.error(`❌ Failed to update balance for ${advancement.team_name}:`, balanceError)
             } else {
-              console.log(`✅ Updated balance for ${advancement.team_name}: +${awardAmount} (new total: ${newBalanceWithAward})`)
+              // Create announcement for this milestone advancement
+              // Only create if table exists (gracefully handle if migration not run yet)
+              try {
+                const announcementTitle = `Congratulations! You've Advanced to ${milestoneStage}!`
+                const announcementMessage = `📊 Rank: #${rank} (${rank === 1 ? 'First' : rank === 2 ? 'Second' : rank === 3 ? 'Third' : `${rank}th`} to reach this milestone)\n\n` +
+                  `Keep up the great work and continue making strategic decisions!`
+                
+                const { error: announcementError } = await supabase
+                  .from('team_announcements')
+                  .insert({
+                    game_id: gameId,
+                    team_id: advancement.team_id,
+                    announcement_type: 'milestone_advancement',
+                    title: announcementTitle,
+                    message: announcementMessage,
+                    balance_award: awardAmount,
+                    old_stage: advancement.old_stage,
+                    new_stage: milestoneStage,
+                    week_number: settings.current_week,
+                    is_read: false
+                  })
+                
+                if (announcementError) {
+                  // Check if table doesn't exist - that's okay, just log
+                  const errorMsg = announcementError.message || String(announcementError) || JSON.stringify(announcementError)
+                  const errorCode = (announcementError as any)?.code || (announcementError as any)?.hint
+                  
+                  console.log({
+                    message: errorMsg,
+                    code: errorCode,
+                    fullError: announcementError
+                  })
+                  
+                  if (errorCode === '42P01' || errorMsg.includes('does not exist') || errorMsg.includes('relation') || errorMsg.includes('team_announcements')) {
+                  } else if (errorMsg.includes('permission') || errorMsg.includes('RLS') || errorCode === '42501') {
+                  } else {
+                    console.error(`❌ Failed to create announcement for ${advancement.team_name}:`, errorMsg)
+                  }
+                } else {
+                }
+              } catch (announcementErr: any) {
+                // Gracefully handle any errors creating announcements
+                const errorMsg = announcementErr?.message || String(announcementErr) || JSON.stringify(announcementErr)
+              }
             }
           }
         }
@@ -923,6 +1103,38 @@ export async function POST(request: NextRequest) {
     const nextWeek = shouldAdvanceWeek ? settings.current_week + 1 : settings.current_week
     const newStatus = settings.current_week === settings.total_weeks ? 'completed' : 'active'
 
+    // Auto-mark all unread announcements from weeks before the CURRENT week as read when advancing
+    // This ensures announcements show for ONE week only (the week they were created)
+    // Example: Week 2 announcement shows in week 2, then gets marked as read when week 3 starts
+    // The cleanup happens AFTER processing teams, so settings.current_week is still the old week
+    // We want to mark announcements from weeks < current_week as read (so they disappear in the next week)
+    if (shouldAdvanceWeek) {
+      try {
+        // Mark announcements from weeks before the CURRENT week as read
+        // This way, when we advance to nextWeek, announcements from current_week will still be visible
+        // But announcements from weeks before current_week will be marked as read
+        const { error: markReadError } = await supabase
+          .from('team_announcements')
+          .update({ is_read: true })
+          .eq('game_id', gameId)
+          .eq('is_read', false)
+          .lt('week_number', settings.current_week) // Mark announcements from weeks before current_week
+        
+        if (markReadError) {
+          // Check if table doesn't exist - that's okay
+          const errorMsg = markReadError.message || String(markReadError)
+          if (!errorMsg.includes('does not exist') && !errorMsg.includes('relation')) {
+          }
+        } else {
+        }
+      } catch (announcementCleanupErr: any) {
+        // Gracefully handle any errors
+        const errorMsg = announcementCleanupErr?.message || String(announcementCleanupErr)
+        if (!errorMsg.includes('does not exist') && !errorMsg.includes('relation')) {
+        }
+      }
+    }
+
     // Update the game status and set week_start_time for countdown timer
     const { error: updateWeekError } = await supabase
       .from('game_settings')
@@ -933,7 +1145,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('game_id', gameId)
 
-    console.log('Updating game:', {
+    console.log({
       currentWeek: settings.current_week,
       nextWeek,
       totalWeeks: settings.total_weeks,

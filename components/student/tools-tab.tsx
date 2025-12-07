@@ -75,7 +75,7 @@ export default function ToolsTab({ teamId, budget }: ToolsTabProps) {
                     </ul>
                   </div>
                   <div className="text-right ml-6">
-                    <p className="text-2xl font-bold text-primary mb-3">${tool.price.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-primary mb-3">฿{tool.price.toLocaleString()}</p>
                     <Button
                       onClick={() => handlePurchase(tool.id, tool.price)}
                       disabled={!canAfford || isPurchased}

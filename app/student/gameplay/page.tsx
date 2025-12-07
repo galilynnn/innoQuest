@@ -45,6 +45,17 @@ export default function StudentGameplay() {
   const [displayDemand, setDisplayDemand] = useState<number>(0)
   const [lastSeenWeek, setLastSeenWeek] = useState<number>(0)
   const [lostRound, setLostRound] = useState<boolean>(false)
+  const [announcements, setAnnouncements] = useState<Array<{
+    id: string
+    title: string
+    message: string
+    balance_award: number | null
+    old_stage: string | null
+    new_stage: string | null
+    week_number: number
+    is_read: boolean
+    announcement_type?: string
+  }>>([])
 
   // Load initial data once
   useEffect(() => {
@@ -332,9 +343,69 @@ export default function StudentGameplay() {
         }
       }
     }
+
+    // Load unread announcements (milestone advancements, etc.)
+    const loadAnnouncements = async () => {
+      if (!team) return
+      
+      try {
+        const { data: announcementsData, error } = await supabase
+          .from('team_announcements')
+          .select('id, title, message, balance_award, old_stage, new_stage, week_number, is_read, announcement_type')
+          .eq('team_id', team.team_id)
+          .eq('is_read', false)
+          .order('created_at', { ascending: false })
+          .limit(10) // Show up to 10 unread announcements
+        
+        // Handle errors gracefully - table exists, so any error is likely permission-related
+        if (error) {
+          const errorMessage = error.message || String(error) || JSON.stringify(error)
+          const errorCode = (error as any)?.code || (error as any)?.hint || (error as any)?.details
+          
+          // Log error for debugging but don't break the app
+          console.warn('⚠️ Could not load announcements (non-critical):', {
+            message: errorMessage,
+            code: errorCode,
+            note: 'Announcements feature will be disabled until this is resolved'
+          })
+          setAnnouncements([])
+          return
+        }
+        
+        if (announcementsData && announcementsData.length > 0) {
+          console.log('📢 Loaded announcements:', announcementsData.length)
+          setAnnouncements(announcementsData)
+          
+          // Show alert for the most recent announcement
+          const mostRecent = announcementsData[0]
+          if (mostRecent.announcement_type === 'milestone_advancement') {
+            const alertMessage = mostRecent.title + '\n\n' +
+              (mostRecent.old_stage && mostRecent.new_stage 
+                ? `Your team has advanced from ${mostRecent.old_stage} to ${mostRecent.new_stage} stage!\n\n`
+                : `Your team has advanced to a new funding stage!\n\n`) +
+              (mostRecent.balance_award 
+                ? `💰 Balance Award: ฿${mostRecent.balance_award.toLocaleString()}\n\n`
+                : '') +
+              mostRecent.message
+            alert(alertMessage)
+          }
+        } else {
+          setAnnouncements([])
+        }
+      } catch (error: any) {
+        // Catch any unexpected errors gracefully
+        console.warn('Warning in loadAnnouncements:', error?.message || error)
+        setAnnouncements([])
+      }
+    }
     
     // Run the check and show alerts
     checkAndShowAlerts()
+    
+    // Load announcements
+    if (team) {
+      loadAnnouncements()
+    }
     
     setLastSeenWeek(gameSettings.current_week)
     refreshRevenueAndDemand()
@@ -527,6 +598,55 @@ export default function StudentGameplay() {
               </div>
             )}
 
+            {/* Milestone Advancement Announcements */}
+            {announcements.map((announcement) => (
+              <div key={announcement.id} className="mb-6 bg-gradient-to-br from-green-50 to-emerald-50 border-4 border-green-500 rounded-xl p-6 shadow-2xl animate-pulse">
+                <div className="flex items-start gap-4">
+                  <div className="text-5xl animate-bounce">🎉</div>
+                  <div className="flex-1">
+                    <h3 className="font-['Poppins'] text-2xl font-bold text-green-900 mb-3 uppercase">{announcement.title}</h3>
+                    <p className="text-green-800 font-semibold mb-3 text-lg">
+                      {announcement.old_stage && announcement.new_stage ? (
+                        <>Your team has successfully advanced from <strong>{announcement.old_stage}</strong> to <strong>{announcement.new_stage}</strong> stage!</>
+                      ) : (
+                        <>Your team has successfully advanced to a new funding stage!</>
+                      )}
+                    </p>
+                    {announcement.balance_award && (
+                      <div className="bg-green-100 border-2 border-green-600 rounded-lg p-4 mt-4 mb-4">
+                        <p className="text-green-900 font-bold text-2xl mb-2">
+                          💰 Balance Award: ฿{announcement.balance_award.toLocaleString()}
+                        </p>
+                        <p className="text-green-800 text-sm">
+                          Your balance has been updated with this award amount.
+                        </p>
+                      </div>
+                    )}
+                    {announcement.message && (
+                      <div className="text-green-800 space-y-2">
+                        <p className="font-semibold text-base whitespace-pre-line">{announcement.message}</p>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      // Mark as read
+                      await supabase
+                        .from('team_announcements')
+                        .update({ is_read: true })
+                        .eq('id', announcement.id)
+                      // Remove from local state
+                      setAnnouncements(announcements.filter(a => a.id !== announcement.id))
+                    }}
+                    className="text-green-500 hover:text-green-700 text-2xl font-bold"
+                    title="Dismiss announcement"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+
             {/* Lost Round Alert */}
             {lostRound && (
               <div className="mb-6 bg-red-50 border-4 border-red-500 rounded-xl p-6 shadow-2xl animate-pulse">
@@ -571,7 +691,7 @@ export default function StudentGameplay() {
               </div>
               <div className="flex-1 min-w-[200px]">
                 <p className="text-sm text-gray-600 mb-1">Balance</p>
-                <p className="text-3xl font-bold text-[#E63946]">${team.total_balance.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-[#E63946]">฿{team.total_balance.toLocaleString()}</p>
                 <p className="text-xs text-gray-500 mt-1">From milestone achievements</p>
               </div>
               <div className="flex-1 min-w-[200px] text-right">
@@ -720,8 +840,8 @@ function DecisionHistory({ team }: { team: TeamData }) {
               {results.map((result) => (
                 <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
                   <td className="text-center py-3">Week {result.week_number}</td>
-                  <td className="text-center">${result.set_price || 0}</td>
-                  <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
+                  <td className="text-center">฿{result.set_price || 0}</td>
+                  <td className="text-center">฿{(result.revenue || 0).toLocaleString()}</td>
                   <td className="text-center">{result.rnd_tier || '-'}</td>
                 </tr>
               ))}

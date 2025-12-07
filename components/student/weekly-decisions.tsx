@@ -499,7 +499,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             <div>
               <label className="block font-['Inter'] font-semibold text-sm text-black mb-2">Price per Unit</label>
               <div className="relative flex items-center">
-                <span className="absolute left-4 font-semibold text-gray-600 text-base">$</span>
+                <span className="absolute left-4 font-semibold text-gray-600 text-base">฿</span>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -848,7 +848,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 </div>
                 <div className="pb-5 border-b border-gray-200">
                   <div className="font-['Poppins'] font-bold text-base text-black mb-2">Price</div>
-                  <div className="text-sm text-gray-600">${priceNum}</div>
+                  <div className="text-sm text-gray-600">฿{priceNum}</div>
                 </div>
                 <div className="pb-5 border-b border-gray-200">
                   <div className="font-['Poppins'] font-bold text-base text-black mb-2">R&D Strategy</div>

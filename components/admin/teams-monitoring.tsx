@@ -76,7 +76,7 @@ export default function TeamsMonitoring() {
                       <span className="text-sm text-gray-600">{performanceScore.toFixed(0)}%</span>
                     </TableCell>
                     <TableCell className="font-semibold text-gray-900">
-                      ${team.totalCash.toLocaleString()}
+                      ฿{team.totalCash.toLocaleString()}
                     </TableCell>
                     <TableCell>{team.fundingStage}</TableCell>
                   </TableRow>

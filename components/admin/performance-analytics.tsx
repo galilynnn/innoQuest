@@ -51,7 +51,7 @@ export default function PerformanceAnalytics() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-primary">${metric.totalProfit.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-primary">฿{metric.totalProfit.toLocaleString()}</p>
                   <p className="text-xs text-gray-600">Total Profit</p>
                 </div>
               </div>

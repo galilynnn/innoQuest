@@ -54,7 +54,7 @@ export default function StudentGameplay({ onBack, teamId: initialTeamId }: Stude
           <div className="grid grid-cols-4 gap-4">
             <div className="bg-blue-50 p-3 rounded-lg">
               <p className="text-xs text-gray-600">Available Budget</p>
-              <p className="text-lg font-bold text-blue-600">${budget.toLocaleString()}</p>
+              <p className="text-lg font-bold text-blue-600">฿{budget.toLocaleString()}</p>
             </div>
             <div className="bg-green-50 p-3 rounded-lg">
               <p className="text-xs text-gray-600">Funding Stage</p>
@@ -66,7 +66,7 @@ export default function StudentGameplay({ onBack, teamId: initialTeamId }: Stude
             </div>
             <div className="bg-orange-50 p-3 rounded-lg">
               <p className="text-xs text-gray-600">Total Cash</p>
-              <p className="text-lg font-bold text-orange-600">${currentTeam?.totalCash.toLocaleString() || '0'}</p>
+              <p className="text-lg font-bold text-orange-600">฿{currentTeam?.totalCash.toLocaleString() || '0'}</p>
             </div>
           </div>
         </div>

@@ -205,7 +205,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
               </div>
               <p className="font-semibold text-left">{team.team_name}</p>
               <p className={`text-sm text-left ${selectedTeam?.team_id === team.team_id ? 'opacity-90' : 'text-muted-foreground'}`}>
-                ${team.total_balance.toLocaleString()}
+                ฿{team.total_balance.toLocaleString()}
               </p>
               <div className="mt-2 pt-2 border-t border-border/50">
                 <label 
@@ -244,7 +244,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Current Balance</p>
-                  <p className="text-2xl font-bold text-primary">${selectedTeam.total_balance.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-primary">฿{selectedTeam.total_balance.toLocaleString()}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Funding Stage</p>
@@ -278,7 +278,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
                       weeklyResults.map((result) => (
                         <tr key={result.id} className="border-b border-border hover:bg-secondary/50">
                           <td className="py-3 text-center">Week {result.week_number}</td>
-                          <td className="text-center">${(result.revenue || 0).toLocaleString()}</td>
+                          <td className="text-center">฿{(result.revenue || 0).toLocaleString()}</td>
                         </tr>
                       ))
                     )}

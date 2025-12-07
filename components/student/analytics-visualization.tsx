@@ -195,8 +195,8 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
 
   // Generic function to calculate metric value from a group of customers
   const calculateMetric = (group: any[], operation: string, metric: string): number => {
-    if (group.length === 0) {
-      console.log(`⚠️ Empty group for ${operation} of ${metric}`)
+    if (!group || !Array.isArray(group) || group.length === 0) {
+      console.log(`⚠️ Empty or invalid group for ${operation} of ${metric}:`, { group, isArray: Array.isArray(group), length: group?.length })
       return 0
     }
 
@@ -243,9 +243,17 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       return avg
     } else if (operation === 'Sum') {
       if (metric.includes('Monthly Food Spending')) {
-        return group.reduce((acc, c) => acc + getCSVValue(c, 'Monthly Food Spending', 'monthly_food_spending'), 0)
+        const sum = group.reduce((acc, c) => {
+          const val = getCSVValue(c, 'Monthly Food Spending', 'monthly_food_spending')
+          return acc + val
+        }, 0)
+        console.log(`📊 Sum of ${metric}: group size=${group.length}, sum=${sum}`)
+        return sum
+      } else {
+        console.warn(`⚠️ Sum operation not implemented for metric: ${metric}`)
       }
     }
+    console.warn(`⚠️ Unknown operation: ${operation} for metric: ${metric}`)
     return 0
   }
 
@@ -377,6 +385,8 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
     const groups = groupCustomers(customers, tool.breakdown)
     console.log('🔧 Groups created:', Object.keys(groups).length, 'groups')
     console.log('🔧 Group sizes:', Object.entries(groups).map(([k, v]) => `${k}: ${v.length}`))
+    console.log('🔧 Group keys sample:', Object.keys(groups).slice(0, 10))
+    console.log('🔧 Group key types:', Object.keys(groups).slice(0, 5).map(k => ({ key: k, type: typeof k, hasData: groups[k]?.length > 0 })))
     
     // Get sorted labels
     const labels = Object.keys(groups).sort((a, b) => {
@@ -388,11 +398,28 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
     })
 
     // Filter out empty groups for display
-    // CRITICAL FIX: Convert label to number if numeric, since groups uses number keys (1, 2, 3, ...)
-    // but Object.keys() returns string keys ('1', '2', '3', ...)
+    // CRITICAL: Use the same access pattern as in processing to ensure consistency
+    const getGroup = (label: string): any[] => {
+      // Try string key first (Object.keys returns strings, so this should work)
+      let group = groups[label]
+      
+      // If not found and label is numeric, try numeric key (JavaScript auto-converts number to string)
+      if ((!group || !Array.isArray(group)) && !isNaN(Number(label))) {
+        const numLabel = Number(label)
+        group = groups[numLabel] || groups[String(numLabel)] || groups[label]
+      }
+      
+      // Final fallback
+      if (!group || !Array.isArray(group)) {
+        console.warn(`⚠️ getGroup: Could not find group for label "${label}". Available keys:`, Object.keys(groups).slice(0, 10))
+        return []
+      }
+      
+      return group
+    }
+    
     const nonEmptyLabels = labels.filter(label => {
-      const groupKey = !isNaN(Number(label)) ? Number(label) : label
-      const group = groups[groupKey] || groups[label] || []
+      const group = getGroup(label)
       return group.length > 0
     })
     console.log('🔧 Non-empty labels:', nonEmptyLabels.length, nonEmptyLabels)
@@ -520,17 +547,75 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       }
     }
 
-    // For regular Bar Chart, Line Chart, Pie Chart, or Clustered Bar Chart
+    // For Clustered Bar Chart - needs special handling
+    if (tool.chart.includes('Clustered Bar Chart')) {
+      const breakdownLower = tool.breakdown.toLowerCase()
+      
+      if (breakdownLower.includes('brand loyalty') && breakdownLower.includes('gender')) {
+        // Clustered: Brand Loyalty and Gender
+        const primaryLabels = Array.from({ length: 10 }, (_, i) => String(i + 1)) // 1-10 for Brand Loyalty
+        const secondaryCategories = ['Male', 'Female', 'Other']
+        
+        const clusteredDatasets = secondaryCategories.map((gender, genderIdx) => {
+          const values = primaryLabels.map(level => {
+            const groupKey = `BL${level}_${gender}`
+            const group = groups[groupKey] || []
+            return calculateMetric(group, tool.operation, tool.metrics[0])
+          })
+          
+          return {
+            label: gender,
+            data: values,
+            backgroundColor: genderIdx === 0 ? 'rgba(59, 130, 246, 0.6)' : genderIdx === 1 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(139, 92, 246, 0.6)',
+            borderColor: genderIdx === 0 ? 'rgba(59, 130, 246, 1)' : genderIdx === 1 ? 'rgba(16, 185, 129, 1)' : 'rgba(139, 92, 246, 1)',
+            borderWidth: 2
+          }
+        })
+        
+        return { labels: primaryLabels, datasets: clusteredDatasets, chartType: tool.chart, isClustered: true }
+      } else if (breakdownLower.includes('health consciousness') && breakdownLower.includes('sustainability preference')) {
+        // Clustered: Health Consciousness and Sustainability Preference
+        const primaryLabels = Array.from({ length: 10 }, (_, i) => String(i + 1)) // 1-10 for Health Consciousness
+        const sustainabilityLevels = Array.from({ length: 10 }, (_, i) => i + 1) // 1-10 for Sustainability
+        
+        // For this clustered chart, we'll show Health Consciousness on X-axis and cluster by Sustainability levels
+        // We'll show top 3-4 sustainability levels as clusters
+        const topSustainabilityLevels = [1, 3, 5, 7, 9] // Show a few representative levels
+        
+        const clusteredDatasets = topSustainabilityLevels.map((sustLevel, idx) => {
+          const values = primaryLabels.map(healthLevel => {
+            const groupKey = `H${healthLevel}_S${sustLevel}`
+            const group = groups[groupKey] || []
+            return calculateMetric(group, tool.operation, tool.metrics[0])
+          })
+          
+          return {
+            label: `Sustainability ${sustLevel}`,
+            data: values,
+            backgroundColor: idx === 0 ? 'rgba(59, 130, 246, 0.6)' : idx === 1 ? 'rgba(16, 185, 129, 0.6)' : idx === 2 ? 'rgba(139, 92, 246, 0.6)' : idx === 3 ? 'rgba(236, 72, 153, 0.6)' : 'rgba(245, 158, 11, 0.6)',
+            borderColor: idx === 0 ? 'rgba(59, 130, 246, 1)' : idx === 1 ? 'rgba(16, 185, 129, 1)' : idx === 2 ? 'rgba(139, 92, 246, 1)' : idx === 3 ? 'rgba(236, 72, 153, 1)' : 'rgba(245, 158, 11, 1)',
+            borderWidth: 2
+          }
+        })
+        
+        return { labels: primaryLabels, datasets: clusteredDatasets, chartType: tool.chart, isClustered: true }
+      }
+      // If no specific clustered pattern matches, fall through to regular bar chart logic
+    }
+
+    // For regular Bar Chart, Line Chart, or Pie Chart
     const datasets = tool.metrics.map((metric, idx) => {
       // IMPORTANT: Map values in the SAME ORDER as nonEmptyLabels
-      // CRITICAL: groups uses number keys (1, 2, 3, ...) but labels are strings ('1', '2', '3', ...)
-      // So we need to access groups[label] where label is a string
+      // Use the same getGroup helper function to ensure consistent access pattern
       const values = nonEmptyLabels.map((label, labelIndex) => {
-        // Convert label to number if it's numeric (for Brand Loyalty, Health Consciousness, etc.)
-        const groupKey = !isNaN(Number(label)) ? Number(label) : label
-        const group = groups[groupKey] || groups[label] || []
+        const group = getGroup(label)
+        
+        if (group.length === 0) {
+          console.warn(`⚠️ Empty group for label "${label}" (this shouldn't happen after filtering)`)
+        }
+        
         const calculated = calculateMetric(group, tool.operation, metric)
-        console.log(`🔢 [${labelIndex}] Label "${label}" (key: ${groupKey}): calculated=${calculated}, group size=${group.length}`)
+        console.log(`🔢 [${labelIndex}] Label "${label}": calculated=${calculated}, group size=${group.length}, operation=${tool.operation}, metric=${metric}`)
         return calculated
       })
 
@@ -555,16 +640,12 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
         data: values, // This array MUST match nonEmptyLabels in order and length
         backgroundColor: tool.chart.includes('Pie Chart') 
           ? ['rgba(59, 130, 246, 0.6)', 'rgba(236, 72, 153, 0.6)', 'rgba(139, 92, 246, 0.6)']
-          : tool.chart.includes('Clustered') 
-            ? (idx === 0 ? 'rgba(59, 130, 246, 0.6)' : 'rgba(16, 185, 129, 0.6)')
-            : tool.chart.includes('Line Chart')
+          : tool.chart.includes('Line Chart')
               ? 'transparent'
               : 'rgba(59, 130, 246, 0.6)',
         borderColor: tool.chart.includes('Pie Chart')
           ? ['rgba(59, 130, 246, 1)', 'rgba(236, 72, 153, 1)', 'rgba(139, 92, 246, 1)']
-          : tool.chart.includes('Clustered')
-            ? (idx === 0 ? 'rgba(59, 130, 246, 1)' : 'rgba(16, 185, 129, 1)')
-            : tool.chart.includes('Line Chart')
+          : tool.chart.includes('Line Chart')
               ? 'rgba(236, 72, 153, 1)'
               : 'rgba(59, 130, 246, 1)',
         borderWidth: tool.chart.includes('Line Chart') ? 3 : 2,
@@ -846,7 +927,95 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       )
     }
 
-    // Regular Bar Chart or Clustered Bar Chart
+    // Clustered Bar Chart - special rendering
+    if (data.isClustered && chartType.includes('Clustered Bar Chart')) {
+      const allValues = datasets.flatMap((d: any) => d.data).filter((v: number) => !isNaN(v) && isFinite(v))
+      const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
+      const roundedMaxValue = Math.round(maxValue)
+      
+      if (maxValue === 0 || allValues.length === 0 || isNaN(maxValue) || !isFinite(maxValue)) {
+        return (
+          <div className="text-center py-8 text-gray-500">
+            <p>No data to display</p>
+            <p className="text-xs mt-2">All values are zero or invalid</p>
+          </div>
+        )
+      }
+      
+      return (
+        <div className="space-y-6">
+          <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
+            <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
+              {[100, 80, 60, 40, 20, 0].map(val => (
+                <span key={val}>{roundedMaxValue > 0 ? Math.round(roundedMaxValue * val / 100).toLocaleString() : val}</span>
+              ))}
+            </div>
+            <div className="ml-8 h-full flex items-end gap-1">
+              {labels.map((label: string, labelIdx: number) => {
+                return (
+                  <div key={labelIdx} className="flex-1 flex flex-col items-center gap-0.5 h-full">
+                    <div className="w-full flex items-end gap-0.5 h-full">
+                      {datasets.map((dataset: any, datasetIdx: number) => {
+                        if (!Array.isArray(dataset.data) || labelIdx >= dataset.data.length) {
+                          return null
+                        }
+                        
+                        const barValue = typeof dataset.data[labelIdx] === 'number' ? dataset.data[labelIdx] : 0
+                        const barHeight = maxValue > 0 && barValue > 0 ? (barValue / maxValue * 100) : 0
+                        
+                        if (isNaN(barHeight) || !isFinite(barHeight)) {
+                          return null
+                        }
+                        
+                        return (
+                          <div key={datasetIdx} className="flex-1 flex flex-col items-center min-w-0">
+                            <div className="w-full flex flex-col justify-end h-full relative">
+                              <div
+                                className="w-full rounded-t transition-all hover:opacity-80"
+                                style={{
+                                  height: `${barHeight}%`,
+                                  minHeight: barHeight > 0 ? '4px' : '0px',
+                                  backgroundColor: dataset.backgroundColor || 'rgba(59, 130, 246, 0.6)',
+                                  borderColor: dataset.borderColor || 'rgba(59, 130, 246, 1)',
+                                  borderWidth: dataset.borderWidth || 2,
+                                  borderStyle: 'solid',
+                                  borderBottom: 'none',
+                                  boxSizing: 'border-box'
+                                }}
+                                title={`${dataset.label}: ${barValue.toLocaleString()}`}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-2 text-center font-medium w-full">
+                      {label}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div className="flex gap-4 justify-center mt-4">
+            {datasets.map((dataset: any, idx: number) => (
+              <div key={idx} className="flex items-center gap-2">
+                <div
+                  className="w-4 h-4 rounded"
+                  style={{ backgroundColor: dataset.backgroundColor }}
+                />
+                <span className="text-sm text-gray-700">{dataset.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-sm font-semibold text-gray-700 text-center">
+            X-axis: {toolInfo?.breakdown || 'Category'}
+          </div>
+        </div>
+      )
+    }
+
+    // Regular Bar Chart
     const allValues = datasets.flatMap((d: any) => d.data).filter((v: number) => !isNaN(v) && isFinite(v))
     const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
     const roundedMaxValue = Math.round(maxValue)

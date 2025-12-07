@@ -9,5 +9,3 @@
 - [ ] Logic Display analytics tools
    - Some of the analytics display are not accurate (Bar chart)
    - Put percent amount on onHover for each tools 
-   - One time loading thingy
-- [ ] Take all console log out

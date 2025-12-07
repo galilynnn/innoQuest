@@ -148,7 +148,7 @@ export default function LeaderboardView() {
                 </label>
               </div>
               <div className="text-left min-w-48">
-                <p className="text-2xl font-bold text-primary">${(team.total_balance || 0).toLocaleString()}</p>
+                <p className="text-2xl font-bold text-primary">฿{(team.total_balance || 0).toLocaleString()}</p>
                 <p className="text-sm text-gray-600">Total Cash</p>
               </div>
             </div>

@@ -118,7 +118,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
             <div>
               <label className="block text-sm font-medium mb-2">Price per Unit</label>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-serif">$</span>
+                <span className="text-lg font-serif">฿</span>
                 <input
                   type="number"
                   min="50"
@@ -129,14 +129,14 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                   className="flex-1 px-4 py-2 border border-border rounded-lg bg-input focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
-              <p className="text-xs text-muted-foreground mt-1">Range: $50 - $200</p>
+              <p className="text-xs text-muted-foreground mt-1">Range: ฿50 - ฿200</p>
             </div>
 
             <div className="bg-secondary p-4 rounded-lg">
               <p className="text-sm text-muted-foreground mb-1">Estimated Demand</p>
               <p className="text-2xl font-bold">{estimatedDemand.toLocaleString()} units</p>
               <p className="text-sm text-muted-foreground mt-2">Estimated Revenue</p>
-              <p className="text-2xl font-bold text-primary">${estimatedRevenue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-primary">฿{estimatedRevenue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -169,7 +169,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               >
                 <div className="flex justify-between items-center">
                   <span className="font-medium">{tier.label}</span>
-                  <span className="text-sm opacity-75">${tier.cost.toLocaleString()}</span>
+                  <span className="text-sm opacity-75">฿{tier.cost.toLocaleString()}</span>
                 </div>
                 <p className="text-xs opacity-75 mt-1">Success Rate: {(tier.successRate * 100).toFixed(0)}%</p>
               </button>
@@ -188,33 +188,33 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
                 onChange={(e) => setAnalyticsPurchased(e.target.checked)}
                 className="mr-3"
               />
-              <span className="font-medium">Purchase Analytics Tools ($2,000)</span>
+              <span className="font-medium">Purchase Analytics Tools (฿2,000)</span>
             </label>
 
             <div className="bg-secondary p-4 rounded-lg space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Base Operating Costs:</span>
-                <span>$20,000</span>
+                <span>฿20,000</span>
               </div>
               {rndTier && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">R&D Investment:</span>
-                  <span>${RND_TIERS.find((t) => t.tier === rndTier)?.cost.toLocaleString()}</span>
+                  <span>฿{RND_TIERS.find((t) => t.tier === rndTier)?.cost.toLocaleString()}</span>
                 </div>
               )}
               {analyticsPurchased && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Analytics Tools:</span>
-                  <span>$2,000</span>
+                  <span>฿2,000</span>
                 </div>
               )}
               <div className="border-t border-border pt-2 flex justify-between font-semibold">
                 <span>Total Costs:</span>
-                <span>${totalCosts.toLocaleString()}</span>
+                <span>฿{totalCosts.toLocaleString()}</span>
               </div>
               <div className="border-t border-border pt-2 flex justify-between font-bold text-lg text-primary">
                 <span>Est. Profit:</span>
-                <span>${(estimatedRevenue - totalCosts).toLocaleString()}</span>
+                <span>฿{(estimatedRevenue - totalCosts).toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Price:</span>
-                <span className="font-semibold">${price}</span>
+                <span className="font-semibold">฿{price}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">R&D:</span>

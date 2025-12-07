@@ -9,6 +9,7 @@ interface TeamResult {
   total_balance: number
   funding_stage: string
   successful_rnd_tests: number
+  actual_rnd_success_count?: number // Calculated from rnd_tests table
 }
 
 export default function ResultPage() {
@@ -31,7 +32,7 @@ export default function ResultPage() {
       // Load current team data using team_id column
       const { data: team } = await supabase
         .from('teams')
-        .select('team_name, total_balance, funding_stage, successful_rnd_tests')
+        .select('team_id, team_name, total_balance, funding_stage, successful_rnd_tests')
         .eq('team_id', teamId)
         .single()
 
@@ -42,19 +43,45 @@ export default function ResultPage() {
         return
       }
 
+      // Calculate actual R&D success count from rnd_tests table
+      const { data: rndTests } = await supabase
+        .from('rnd_tests')
+        .select('success')
+        .eq('team_id', teamId)
+
+      const actualRndSuccessCount = rndTests?.filter(test => test.success === true).length || 0
+
       if (team) {
-        setTeamData(team)
+        setTeamData({
+          ...team,
+          actual_rnd_success_count: actualRndSuccessCount
+        })
       }
 
       // Load all teams for leaderboard
       const { data: teams } = await supabase
         .from('teams')
-        .select('team_name, total_balance, funding_stage, successful_rnd_tests')
+        .select('team_id, team_name, total_balance, funding_stage, successful_rnd_tests')
         .eq('game_id', gameId)
         .order('total_balance', { ascending: false })
 
       if (teams) {
-        setAllTeams(teams)
+        // Calculate actual R&D success count for each team
+        const teamsWithRndCount = await Promise.all(
+          teams.map(async (t) => {
+            const { data: teamRndTests } = await supabase
+              .from('rnd_tests')
+              .select('success')
+              .eq('team_id', t.team_id)
+            
+            const actualCount = teamRndTests?.filter(test => test.success === true).length || 0
+            return {
+              ...t,
+              actual_rnd_success_count: actualCount
+            }
+          })
+        )
+        setAllTeams(teamsWithRndCount)
       }
 
       setLoading(false)
@@ -101,7 +128,7 @@ export default function ResultPage() {
           <div className="grid grid-cols-3 gap-6 mb-8">
             <div className="text-center p-6 bg-gray-50 rounded-xl">
               <div className="text-sm text-gray-600 mb-2">Final Balance</div>
-              <div className="text-3xl font-bold text-[#E63946]">${(teamData?.total_balance || 0).toLocaleString()}</div>
+              <div className="text-3xl font-bold text-[#E63946]">฿{(teamData?.total_balance || 0).toLocaleString()}</div>
             </div>
             <div className="text-center p-6 bg-gray-50 rounded-xl">
               <div className="text-sm text-gray-600 mb-2">Funding Stage</div>
@@ -109,7 +136,7 @@ export default function ResultPage() {
             </div>
             <div className="text-center p-6 bg-gray-50 rounded-xl">
               <div className="text-sm text-gray-600 mb-2">R&D Success</div>
-              <div className="text-3xl font-bold text-green-600">{teamData?.successful_rnd_tests || 0}</div>
+              <div className="text-3xl font-bold text-green-600">{teamData?.actual_rnd_success_count ?? teamData?.successful_rnd_tests ?? 0}</div>
             </div>
           </div>
         </div>
@@ -142,7 +169,7 @@ export default function ResultPage() {
                   <p className="text-sm text-gray-600">{team.funding_stage}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-[#E63946]">${(team.total_balance || 0).toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-[#E63946]">฿{(team.total_balance || 0).toLocaleString()}</p>
                   <p className="text-sm text-gray-600">Final Balance</p>
                 </div>
               </div>

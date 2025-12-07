@@ -30,3 +30,4 @@ COMMENT ON COLUMN analytics_purchases.tool_type IS 'Full name/description of the
 COMMENT ON COLUMN analytics_purchases.cost IS 'Cost of the tool in this purchase';
 
 
+

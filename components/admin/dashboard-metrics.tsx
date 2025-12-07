@@ -50,7 +50,7 @@ export default function DashboardMetrics() {
       <Card className="card-base">
         <p className="text-sm text-gray-600 mb-2">Top Performer</p>
         <p className="text-2xl font-bold text-primary">{topTeam?.name.split(' ')[1] || 'N/A'}</p>
-        <p className="text-xs text-gray-500 mt-1">${topTeam?.totalCash.toLocaleString() || 0}</p>
+        <p className="text-xs text-gray-500 mt-1">฿{topTeam?.totalCash.toLocaleString() || 0}</p>
       </Card>
     </div>
   )

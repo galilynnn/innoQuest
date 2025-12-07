@@ -123,8 +123,8 @@ export default function DecisionsTab({ teamId }: DecisionsTabProps) {
           <div className="bg-blue-50 p-4 rounded-lg space-y-3">
             <h3 className="font-semibold text-gray-900">Price Impact</h3>
             <div className="space-y-2 text-sm">
-              <p className="text-gray-700">Current Price: <span className="font-bold">${price}</span></p>
-              <p className="text-gray-700">Revenue: <span className="font-bold text-green-600">${(price * 2450).toLocaleString()}</span></p>
+              <p className="text-gray-700">Current Price: <span className="font-bold">฿{price}</span></p>
+              <p className="text-gray-700">Revenue: <span className="font-bold text-green-600">฿{(price * 2450).toLocaleString()}</span></p>
             </div>
           </div>
         </div>
@@ -151,7 +151,7 @@ export default function DecisionsTab({ teamId }: DecisionsTabProps) {
               }`}
             >
               <p className="font-semibold text-gray-900">{tier.tier}</p>
-              <p className="text-sm text-gray-600 mt-2">${tier.cost.toLocaleString()}</p>
+              <p className="text-sm text-gray-600 mt-2">฿{tier.cost.toLocaleString()}</p>
               <p className="text-sm font-semibold text-primary mt-1">+{(tier.bonus * 100).toFixed(0)}% boost</p>
             </button>
           ))}
@@ -168,7 +168,7 @@ export default function DecisionsTab({ teamId }: DecisionsTabProps) {
             <div className="flex-1">
               <div className="flex justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">{team.fundingStage} Progress</span>
-                <span className="text-sm font-semibold text-gray-900">${team.totalCash.toLocaleString()}</span>
+                <span className="text-sm font-semibold text-gray-900">฿{team.totalCash.toLocaleString()}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
