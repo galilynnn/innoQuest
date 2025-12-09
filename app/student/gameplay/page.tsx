@@ -32,6 +32,8 @@ interface GameSettings {
   initial_capital?: number
   week_duration_minutes?: number
   week_start_time?: string
+  is_paused?: boolean
+  pause_timestamp?: string
 }
 
 export default function StudentGameplay() {
@@ -179,7 +181,9 @@ export default function StudentGameplay() {
             rnd_tier_config: settingsData.rnd_tier_config,
             initial_capital: settingsData.initial_capital || 0,
             week_duration_minutes: settingsData.week_duration_minutes || 5,
-            week_start_time: settingsData.week_start_time
+            week_start_time: settingsData.week_start_time,
+            is_paused: settingsData.is_paused || false,
+            pause_timestamp: settingsData.pause_timestamp
           })
         } else {
           console.log('❌ No game settings found for game_id:', teamData.game_id)
@@ -193,16 +197,22 @@ export default function StudentGameplay() {
     loadData()
   }, []) // Run only once on mount
 
-  // Countdown timer effect
+  // Countdown timer effect with proper pause/resume
   useEffect(() => {
     if (!gameSettings?.week_start_time || gameSettings.game_status !== 'active') return
 
+    // If paused, stop the interval
+    if (gameSettings.is_paused) {
+      return
+    }
+
+    // Active timer countdown
     const interval = setInterval(() => {
       const startTime = new Date(gameSettings.week_start_time!).getTime()
       const durationMs = (gameSettings.week_duration_minutes || 5) * 60 * 1000
       const endTime = startTime + durationMs
       const now = Date.now()
-      const remaining = endTime - now
+      const remaining = Math.max(0, endTime - now)
 
       if (remaining <= 0) {
         setTimeRemaining(0)
@@ -216,7 +226,7 @@ export default function StudentGameplay() {
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [gameSettings?.week_start_time, gameSettings?.week_duration_minutes, gameSettings?.game_status])
+  }, [gameSettings?.week_start_time, gameSettings?.week_duration_minutes, gameSettings?.game_status, gameSettings?.is_paused])
 
   // Refresh revenue and demand when current_week changes
   useEffect(() => {
@@ -443,6 +453,15 @@ export default function StudentGameplay() {
             }
             
             window.location.reload()
+          } else if (newSettings.is_paused !== gameSettings.is_paused) {
+            // Update pause state in real-time
+            console.log(`Game ${newSettings.is_paused ? 'paused' : 'resumed'}`)
+            setGameSettings(prev => prev ? { 
+              ...prev, 
+              is_paused: newSettings.is_paused,
+              week_start_time: newSettings.week_start_time,
+              pause_timestamp: newSettings.pause_timestamp
+            } : null)
           }
         }
       )
@@ -580,19 +599,28 @@ export default function StudentGameplay() {
           <div className="px-10 py-8">
             {/* Countdown Timer */}
             {gameSettings.game_status === 'active' && gameSettings.week_start_time && (
-              <div className="mb-6 bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
+              <div className={`mb-6 ${gameSettings.is_paused ? 'bg-yellow-50 border-yellow-200' : 'bg-orange-50 border-orange-200'} border-2 rounded-xl p-4`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">⏰</span>
+                    <span className="text-2xl">{gameSettings.is_paused ? '⏸' : '⏰'}</span>
                     <div>
-                      <p className="text-sm font-medium text-orange-900">Time Remaining This Week</p>
-                      <p className={`text-2xl font-bold ${timeRemaining <= 60000 ? 'text-red-600 animate-pulse' : 'text-orange-600'}`}>
-                        {formatTime(timeRemaining)}
+                      <p className={`text-sm font-medium ${gameSettings.is_paused ? 'text-yellow-900' : 'text-orange-900'}`}>
+                        {gameSettings.is_paused ? 'Game Paused' : 'Time Remaining This Week'}
                       </p>
+                      {gameSettings.is_paused ? (
+                        <p className="text-2xl font-bold text-yellow-600">⏸ PAUSED</p>
+                      ) : (
+                        <p className={`text-2xl font-bold ${timeRemaining <= 60000 ? 'text-red-600 animate-pulse' : 'text-orange-600'}`}>
+                          {formatTime(timeRemaining)}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right text-xs text-orange-700">
-                    {timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'}
+                  <div className={`text-right text-xs ${gameSettings.is_paused ? 'text-yellow-700' : 'text-orange-700'}`}>
+                    {gameSettings.is_paused 
+                      ? 'You can still submit decisions while paused' 
+                      : timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'
+                    }
                   </div>
                 </div>
               </div>
