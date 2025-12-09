@@ -333,6 +333,30 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
     }
   }
 
+  const handleSaveInvestmentRequirements = async () => {
+    if (!settings) {
+      alert('Error: No settings loaded')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('game_settings')
+      .update({ investment_config: investmentConfig })
+      .eq('game_id', gameId)
+      .select()
+
+    if (!error) {
+      setSettings({
+        ...settings,
+        investment_config: investmentConfig,
+      })
+      
+      alert('✅ Investment Requirements saved successfully!')
+    } else {
+      alert('Error saving investment requirements: ' + error.message)
+    }
+  }
+
   const handleStartGame = async () => {
     const { error } = await supabase
       .from('game_settings')
@@ -471,7 +495,7 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
           
           {showGameEconomy && (
             <div className="p-4">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2">Population Size</label>
                   <input
@@ -702,7 +726,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                               ...investmentConfig,
                               [stage]: { ...investmentConfig[stage], expected_revenue: Number(e.target.value) }
                             })}
-                            disabled={gameActive}
                             className="w-full px-2 py-1 border border-gray-300 rounded"
                           />
                         </td>
@@ -715,7 +738,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                               ...investmentConfig,
                               [stage]: { ...investmentConfig[stage], demand: Number(e.target.value) }
                             })}
-                            disabled={gameActive}
                             className="w-full px-2 py-1 border border-gray-300 rounded"
                           />
                         </td>
@@ -729,7 +751,6 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                               ...investmentConfig,
                               [stage]: { ...investmentConfig[stage], rd_count: Number(e.target.value) }
                             })}
-                            disabled={gameActive}
                             className="w-full px-2 py-1 border border-gray-300 rounded"
                           />
                         </td>
@@ -738,9 +759,17 @@ export default function GameConfiguration({ gameId, onSettingsUpdated, onSwitchT
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                These requirements determine when teams advance to the next funding stage. Changes are saved with "Save Settings" button.
-              </p>
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-xs text-muted-foreground">
+                  These requirements determine when teams advance to the next funding stage.
+                </p>
+                <button
+                  onClick={handleSaveInvestmentRequirements}
+                  className="px-4 py-2 bg-green-600 text-white font-medium rounded hover:bg-green-700 transition-colors"
+                >
+                  Save Investment Requirements
+                </button>
+              </div>
             </div>
           )}
         </div>

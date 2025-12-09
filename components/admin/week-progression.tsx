@@ -10,19 +10,24 @@ interface GameSettings {
   game_status: string
   week_duration_minutes: number
   week_start_time?: string
+  is_paused?: boolean
+  pause_timestamp?: string
 }
 
 export default function WeekProgression() {
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [advancing, setAdvancing] = useState(false)
+  const [pauseToggling, setPauseToggling] = useState(false)
   const [teamsStatus, setTeamsStatus] = useState({ total: 0, joined: 0 })
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     current_week: 0,
     total_weeks: 0,
     game_status: 'setup',
-    week_duration_minutes: 5
+    week_duration_minutes: 5,
+    is_paused: false,
+    pause_timestamp: undefined
   })
   const gameId = '00000000-0000-0000-0000-000000000001'
 
@@ -31,46 +36,7 @@ export default function WeekProgression() {
     loadTeamsStatus()
   }, [])
 
-  // Countdown timer
-  useEffect(() => {
-    if (!gameSettings.week_start_time || gameSettings.game_status !== 'active') return
-
-    const interval = setInterval(() => {
-      const startTime = new Date(gameSettings.week_start_time!).getTime()
-      const durationMs = gameSettings.week_duration_minutes * 60 * 1000
-      const endTime = startTime + durationMs
-      const now = Date.now()
-      const remaining = endTime - now
-
-      if (remaining <= 0) {
-        setTimeRemaining(0)
-        handleAutoAdvance()
-        clearInterval(interval)
-      } else {
-        setTimeRemaining(remaining)
-      }
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [gameSettings.week_start_time, gameSettings.week_duration_minutes, gameSettings.game_status])
-
-  const loadGameSettings = async () => {
-    try {
-      const { data: settings } = await supabase
-        .from('game_settings')
-        .select('current_week, total_weeks, game_status, week_duration_minutes, week_start_time')
-        .eq('game_id', gameId)
-        .single()
-
-      if (settings) {
-        setGameSettings(settings)
-      }
-    } catch (error) {
-      console.error('Error loading game settings:', error)
-    }
-  }
-
-  const handleAutoAdvance = async () => {
+  const handleAutoAdvance = useCallback(async () => {
     if (advancing) return
     setAdvancing(true)
     
@@ -95,6 +61,69 @@ export default function WeekProgression() {
       alert('❌ Auto-advance failed. Please manually advance the week.')
       setAdvancing(false)
     }
+  }, [advancing, gameId])
+
+  // Countdown timer with proper pause/resume
+  useEffect(() => {
+    if (!gameSettings.week_start_time || gameSettings.game_status !== 'active') return
+
+    // If paused, stop the interval
+    if (gameSettings.is_paused) {
+      return
+    }
+
+    // Active timer countdown
+    const interval = setInterval(() => {
+      const startTime = new Date(gameSettings.week_start_time!).getTime()
+      const durationMs = gameSettings.week_duration_minutes * 60 * 1000
+      const now = Date.now()
+      
+      // Calculate elapsed time, accounting for pause duration
+      let pauseDuration = 0
+      if (gameSettings.pause_timestamp) {
+        // Game was paused at some point, calculate how long it was paused
+        // This is handled by the resume logic that updates week_start_time
+        // So we can just use the adjusted week_start_time
+      }
+      
+      const endTime = startTime + durationMs
+      const remaining = Math.max(0, endTime - now)
+
+      if (remaining <= 0) {
+        setTimeRemaining(0)
+        handleAutoAdvance()
+        clearInterval(interval)
+      } else {
+        setTimeRemaining(remaining)
+      }
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [gameSettings.week_start_time, gameSettings.week_duration_minutes, gameSettings.game_status, gameSettings.is_paused, handleAutoAdvance])
+
+  const loadGameSettings = async () => {
+    try {
+      console.log('Loading game settings for gameId:', gameId)
+      const { data: settings, error } = await supabase
+        .from('game_settings')
+        .select('current_week, total_weeks, game_status, week_duration_minutes, week_start_time, is_paused, pause_timestamp')
+        .eq('game_id', gameId)
+        .single()
+
+      if (error) {
+        console.error('Error loading game settings:', error)
+        return
+      }
+
+      if (settings) {
+        console.log('Loaded game settings:', settings)
+        setGameSettings(settings)
+      } else {
+        console.warn('No game settings found for gameId:', gameId)
+      }
+    } catch (error) {
+      console.error('Exception loading game settings:', error)
+    }
   }
 
   const loadTeamsStatus = async () => {
@@ -118,6 +147,31 @@ export default function WeekProgression() {
       setTeamsStatus({ total: maxTeams, joined: joinedTeams })
     } catch (error) {
       console.error('Error loading teams status:', error)
+    }
+  }
+
+  const handleTogglePause = async () => {
+    setPauseToggling(true)
+    try {
+      const response = await fetch('/api/toggle-pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        // Reload settings to get updated pause state and adjusted week_start_time
+        await loadGameSettings()
+      } else {
+        alert(`❌ Failed to toggle pause: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error toggling pause:', error)
+      alert('❌ Failed to toggle pause state')
+    } finally {
+      setPauseToggling(false)
     }
   }
 
@@ -208,6 +262,14 @@ export default function WeekProgression() {
   // Can advance if we're on a valid week (not beyond total weeks)
   const canAdvance = gameSettings.current_week > 0 && gameSettings.current_week <= gameSettings.total_weeks
 
+  // Debug logging
+  console.log('Week Progression Debug:', {
+    current_week: gameSettings.current_week,
+    total_weeks: gameSettings.total_weeks,
+    canAdvance,
+    game_status: gameSettings.game_status
+  })
+
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
     const minutes = Math.floor(totalSeconds / 60)
@@ -225,14 +287,23 @@ export default function WeekProgression() {
         <div className="space-y-4">
           {/* Timer Countdown */}
           {gameSettings.game_status === 'active' && gameSettings.week_start_time && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <div className={`${gameSettings.is_paused ? 'bg-yellow-50 border-yellow-200' : 'bg-orange-50 border-orange-200'} border rounded-lg p-4`}>
               <div className="text-center">
-                <p className="text-sm font-medium text-orange-900 mb-2">Time Remaining</p>
-                <p className={`text-4xl font-bold ${timeRemaining <= 60000 ? 'text-red-600 animate-pulse' : 'text-orange-600'}`}>
-                  {formatTime(timeRemaining)}
+                <p className={`text-sm font-medium ${gameSettings.is_paused ? 'text-yellow-900' : 'text-orange-900'} mb-2`}>
+                  {gameSettings.is_paused ? 'Game Paused' : 'Time Remaining'}
                 </p>
-                <p className="text-xs text-orange-700 mt-2">
-                  {timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'}
+                {gameSettings.is_paused ? (
+                  <p className="text-4xl font-bold text-yellow-600">⏸ PAUSED</p>
+                ) : (
+                  <p className={`text-4xl font-bold ${timeRemaining <= 60000 ? 'text-red-600 animate-pulse' : 'text-orange-600'}`}>
+                    {formatTime(timeRemaining)}
+                  </p>
+                )}
+                <p className={`text-xs ${gameSettings.is_paused ? 'text-yellow-700' : 'text-orange-700'} mt-2`}>
+                  {gameSettings.is_paused 
+                    ? 'Students can still submit decisions during pause' 
+                    : timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'
+                  }
                 </p>
               </div>
             </div>
@@ -273,15 +344,32 @@ export default function WeekProgression() {
           </div>
 
           {/* Week Controls */}
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <button
-              onClick={handleAdvanceWeek}
-              disabled={!canAdvance || advancing}
-              className="w-full py-3 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-            >
-              {advancing ? 'Processing...' : canAdvance ? (gameSettings.current_week === gameSettings.total_weeks ? '🏁 Summarize Game' : 'Next Week') : 'Game Completed'}
-            </button>
-            <p className="text-xs text-gray-500 mt-2 text-center">
+          <div className="mt-6 pt-4 border-t border-gray-200 space-y-3">
+            <div className="flex gap-3 items-stretch">
+              <button
+                onClick={handleAdvanceWeek}
+                disabled={!canAdvance || advancing}
+                className="flex-1 py-3 px-6 bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white rounded-xl font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              >
+                {advancing ? 'Processing...' : canAdvance ? (gameSettings.current_week === gameSettings.total_weeks ? '🏁 Summarize Game' : '⏭ Next Week') : 'Game Completed'}
+              </button>
+              
+              {gameSettings.game_status === 'active' && gameSettings.week_start_time && (
+                <button
+                  onClick={handleTogglePause}
+                  disabled={pauseToggling}
+                  className={`flex-shrink-0 py-3 px-6 rounded-xl font-semibold text-base transition-all hover:-translate-y-0.5 hover:shadow-xl ${
+                    gameSettings.is_paused 
+                      ? 'bg-green-600 hover:bg-green-700 text-white' 
+                      : 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                  } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0`}
+                  title={gameSettings.is_paused ? 'Resume game timer' : 'Pause game timer'}
+                >
+                  {pauseToggling ? '...' : gameSettings.is_paused ? '▶' : '⏸'}
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 text-center">
               {canAdvance ? (gameSettings.current_week === gameSettings.total_weeks ? 'This will end the game and show final results to all students' : 'Admin can manually advance before timer ends') : 'All weeks completed'}
             </p>
           </div>

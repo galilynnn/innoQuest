@@ -38,6 +38,7 @@ interface TeamSummary {
   remaining_demand: number
   expected_revenue: number
   expected_demand: number
+  total_balance: number
 }
 
 export default function GameOverviewPage() {
@@ -49,6 +50,7 @@ export default function GameOverviewPage() {
   const [rndTierConfig, setRndTierConfig] = useState<RndTierConfig | null>(null)
   const [teamsSummary, setTeamsSummary] = useState<TeamSummary[]>([])
   const [populationSize, setPopulationSize] = useState(10000)
+  const [blurredStages, setBlurredStages] = useState<Set<string>>(new Set(['seed', 'series_a', 'series_b', 'series_c']))
 
   useEffect(() => {
     const adminLoggedIn = localStorage.getItem('adminLoggedIn')
@@ -58,6 +60,36 @@ export default function GameOverviewPage() {
     }
 
     loadSummaryData()
+
+    // Subscribe to real-time changes in game_settings
+    const channel = supabase
+      .channel('game_settings_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_settings',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Game settings updated:', payload)
+          if (payload.new.investment_config) {
+            setInvestmentConfig(payload.new.investment_config as InvestmentConfig)
+          }
+          if (payload.new.rnd_tier_config) {
+            setRndTierConfig(payload.new.rnd_tier_config as RndTierConfig)
+          }
+          if (payload.new.population_size) {
+            setPopulationSize(payload.new.population_size)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [router])
 
   const loadSummaryData = async () => {
@@ -89,6 +121,7 @@ export default function GameOverviewPage() {
           team_name,
           funding_stage,
           assigned_product_id,
+          total_balance,
           products:assigned_product_id(name)
         `)
         .eq('game_id', gameId)
@@ -161,6 +194,7 @@ export default function GameOverviewPage() {
             remaining_demand: remainingDemand,
             expected_revenue: expectedRevenue,
             expected_demand: expectedDemand,
+            total_balance: team.total_balance || 0,
           })
         }
 
@@ -218,22 +252,42 @@ export default function GameOverviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {investmentConfig && (['seed', 'series_a', 'series_b', 'series_c'] as const).map((stage) => (
-                    <tr key={stage} className="hover:bg-gray-800">
-                      <td className="border border-gray-700 px-4 py-2 font-medium">
-                        {stage === 'seed' ? 'Seed' : stage === 'series_a' ? 'Series A' : stage === 'series_b' ? 'Series B' : 'Series C'}
-                      </td>
-                      <td className="border border-gray-700 px-4 py-2">
-                        {(investmentConfig[stage].expected_revenue || 0).toLocaleString()}
-                      </td>
-                      <td className="border border-gray-700 px-4 py-2">
-                        {(investmentConfig[stage].demand || 0).toLocaleString()}
-                      </td>
-                      <td className="border border-gray-700 px-4 py-2">
-                        {investmentConfig[stage].rd_count || 0}
-                      </td>
-                    </tr>
-                  ))}
+                  {investmentConfig && (['seed', 'series_a', 'series_b', 'series_c'] as const).map((stage) => {
+                    const stageNames = { seed: 'Seed', series_a: 'Series A', series_b: 'Series B', series_c: 'Series C' }
+                    const stageName = stageNames[stage]
+                    const isBlurred = blurredStages.has(stage)
+                    
+                    return (
+                      <tr 
+                        key={stage} 
+                        className={`hover:bg-gray-800 cursor-pointer transition-all ${isBlurred ? 'opacity-30 blur-sm' : ''}`}
+                        onClick={() => {
+                          setBlurredStages(prev => {
+                            const newSet = new Set(prev)
+                            if (newSet.has(stage)) {
+                              newSet.delete(stage)
+                            } else {
+                              newSet.add(stage)
+                            }
+                            return newSet
+                          })
+                        }}
+                      >
+                        <td className="border border-gray-700 px-4 py-2 font-medium">
+                          {stageName}
+                        </td>
+                        <td className="border border-gray-700 px-4 py-2">
+                          {(investmentConfig[stage].expected_revenue || 0).toLocaleString()}
+                        </td>
+                        <td className="border border-gray-700 px-4 py-2">
+                          {(investmentConfig[stage].demand || 0).toLocaleString()}
+                        </td>
+                        <td className="border border-gray-700 px-4 py-2">
+                          {investmentConfig[stage].rd_count || 0}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -294,39 +348,24 @@ export default function GameOverviewPage() {
                 <tr className="bg-gray-800">
                   <th className="border border-gray-700 px-4 py-2 text-left">Team</th>
                   <th className="border border-gray-700 px-4 py-2 text-left">Product</th>
-                  <th className="border border-gray-700 px-4 py-2 text-left">Remaining</th>
-                  <th className="border border-gray-700 px-4 py-2 text-left">Expected Revenue</th>
-                  <th className="border border-gray-700 px-4 py-2 text-left">Expected Demand</th>
+                  <th className="border border-gray-700 px-4 py-2 text-left">Current Demand</th>
+                  <th className="border border-gray-700 px-4 py-2 text-left">Current Revenue</th>
+                  <th className="border border-gray-700 px-4 py-2 text-left">Balance</th>
                 </tr>
               </thead>
               <tbody>
                 {teamsSummary.map((team) => (
                   <tr key={team.team_id} className="hover:bg-gray-800">
-                    <td className="border border-gray-700 px-4 py-2 font-medium">{team.team_name}</td>
-                    <td className="border border-gray-700 px-4 py-2">{team.product_name}</td>
-                    <td className="border border-gray-700 px-4 py-2">
-                      <div className="bg-gray-700 rounded-full h-6 relative overflow-hidden">
-                        <div
-                          className="bg-red-600 h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (team.remaining_demand / maxRemaining) * 100)}%` }}
-                        />
-                      </div>
+                    <td className="border border-gray-700 px-4 py-3 font-medium">{team.team_name}</td>
+                    <td className="border border-gray-700 px-4 py-3">{team.product_name}</td>
+                    <td className="border border-gray-700 px-4 py-3">
+                      <span className="font-semibold text-green-400">{team.current_demand.toLocaleString()} pcs</span>
                     </td>
-                    <td className="border border-gray-700 px-4 py-2">
-                      <div className="bg-gray-700 rounded-full h-6 relative overflow-hidden">
-                        <div
-                          className="bg-red-600 h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (team.expected_revenue / maxExpectedRevenue) * 100)}%` }}
-                        />
-                      </div>
+                    <td className="border border-gray-700 px-4 py-3">
+                      <span className="font-semibold text-blue-400">฿{team.current_revenue.toLocaleString()}</span>
                     </td>
-                    <td className="border border-gray-700 px-4 py-2">
-                      <div className="bg-gray-700 rounded-full h-6 relative overflow-hidden">
-                        <div
-                          className="bg-red-600 h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(100, (team.expected_demand / maxExpectedDemand) * 100)}%` }}
-                        />
-                      </div>
+                    <td className="border border-gray-700 px-4 py-3">
+                      <span className="font-semibold text-yellow-400">฿{team.total_balance.toLocaleString()}</span>
                     </td>
                   </tr>
                 ))}
