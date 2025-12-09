@@ -43,6 +43,11 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hoveredSlice, setHoveredSlice] = useState<number | null>(null)
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
+  const [hoveredClusteredBar, setHoveredClusteredBar] = useState<{labelIdx: number, datasetIdx: number} | null>(null)
+  const [hoveredPoint, setHoveredPoint] = useState<{datasetIdx: number, pointIdx: number} | null>(null)
+  const [hoveredComboElement, setHoveredComboElement] = useState<{type: 'bar' | 'line', labelIdx: number, datasetIdx: number} | null>(null)
+  const [hoveredStackedBar, setHoveredStackedBar] = useState<number | null>(null)
   const hasLoadedRef = useRef(false) // Use ref to track if data has been loaded (persists across renders)
   const loadedToolTypeRef = useRef<string | null>(null) // Track which tool type was loaded
 
@@ -273,19 +278,39 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       })
     } else if (breakdownLower.includes('brand loyalty') && breakdownLower.includes('gender')) {
       // Clustered: Brand Loyalty and Gender
+      console.log('🔧 Grouping by Brand Loyalty and Gender, customers count:', customers.length)
       for (let i = 1; i <= 10; i++) {
         groups[`BL${i}_Male`] = []
         groups[`BL${i}_Female`] = []
         groups[`BL${i}_Other`] = []
       }
-      customers.forEach(c => {
+      
+      // Sample first customer to debug
+      if (customers.length > 0) {
+        const sample = customers[0]
+        console.log('🔧 Sample customer data:', {
+          raw_brand_loyalty: sample.brand_loyalty,
+          raw_gender: sample.gender,
+          all_keys: Object.keys(sample)
+        })
+      }
+      
+      customers.forEach((c, idx) => {
         const bl = Math.round(getCSVValue(c, 'Brand Loyalty', 'brand_loyalty'))
         const level = Math.max(1, Math.min(10, bl))
         const gender = getCSVTextValue(c, 'Gender', 'gender')
         const normalizedGender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase()
         const genderKey = (normalizedGender === 'Male' || normalizedGender === 'Female') ? normalizedGender : 'Other'
+        
+        if (idx < 5) {
+          console.log(`🔧 Customer ${idx}: bl=${bl}, level=${level}, gender="${gender}", normalized="${normalizedGender}", key="${genderKey}", final="${`BL${level}_${genderKey}`}"`)
+        }
+        
         groups[`BL${level}_${genderKey}`].push(c)
       })
+      
+      // Log final group counts
+      console.log('🔧 Final group counts:', Object.entries(groups).filter(([k, v]) => v.length > 0).map(([k, v]) => `${k}: ${v.length}`))
     } else if (breakdownLower.includes('sustainability preference') && breakdownLower.includes('gender')) {
       // Clustered: Sustainability Preference and Gender
       for (let i = 1; i <= 10; i++) {
@@ -543,7 +568,7 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
           }
         })
 
-        return { labels: nonEmptyLabels, datasets, chartType: tool.chart }
+        return { labels: nonEmptyLabels, datasets, chartType: tool.chart, hasDualAxis: false }
       }
     }
 
@@ -556,12 +581,20 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
         const primaryLabels = Array.from({ length: 10 }, (_, i) => String(i + 1)) // 1-10 for Brand Loyalty
         const secondaryCategories = ['Male', 'Female', 'Other']
         
+        console.log('🔧 Clustered Brand Loyalty & Gender - Available groups:', Object.keys(groups).filter(k => k.startsWith('BL')))
+        console.log('🔧 Tool operation:', tool.operation)
+        console.log('🔧 Tool metrics:', tool.metrics)
+        
         const clusteredDatasets = secondaryCategories.map((gender, genderIdx) => {
           const values = primaryLabels.map(level => {
             const groupKey = `BL${level}_${gender}`
             const group = groups[groupKey] || []
-            return calculateMetric(group, tool.operation, tool.metrics[0])
+            const value = calculateMetric(group, tool.operation, tool.metrics[0])
+            console.log(`🔧 ${groupKey}: group size=${group.length}, operation=${tool.operation}, metric=${tool.metrics[0]}, value=${value}`)
+            return value
           })
+          
+          console.log(`🔧 Dataset for ${gender}:`, values)
           
           return {
             label: gender,
@@ -571,6 +604,8 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
             borderWidth: 2
           }
         })
+        
+        console.log('🔧 Clustered datasets:', clusteredDatasets.map(d => ({ label: d.label, dataLength: d.data.length, data: d.data })))
         
         return { labels: primaryLabels, datasets: clusteredDatasets, chartType: tool.chart, isClustered: true }
       } else if (breakdownLower.includes('health consciousness') && breakdownLower.includes('sustainability preference')) {
@@ -662,6 +697,19 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
     }
 
     const { labels, datasets, chartType, isPercentage } = data
+    
+    console.log('🎨 renderChart called:', { 
+      chartType, 
+      isPercentage, 
+      isClustered: data.isClustered,
+      labels, 
+      labelsCount: labels?.length,
+      datasets: datasets?.map((d: any) => ({ 
+        label: d.label, 
+        dataLength: d.data?.length,
+        sampleData: d.data?.slice(0, 5)
+      }))
+    })
 
     // Pie Chart
     if (chartType.includes('Pie Chart')) {
@@ -804,12 +852,12 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
             <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
               {/* Y-axis labels */}
               <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
-                <span>100%</span>
-                <span>80%</span>
-                <span>60%</span>
-                <span>40%</span>
-                <span>20%</span>
-                <span>0%</span>
+                <span>100</span>
+                <span>80</span>
+                <span>60</span>
+                <span>40</span>
+                <span>20</span>
+                <span>0</span>
               </div>
               
               {/* Bars */}
@@ -819,27 +867,42 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                   const income = datasets.find((d: any) => d.label.includes('Income'))?.data[labelIdx] || 0
                   
                   return (
-                    <div key={labelIdx} className="flex-1 flex flex-col items-center h-full">
+                    <div 
+                      key={labelIdx} 
+                      className="flex-1 flex flex-col items-center h-full relative"
+                      onMouseEnter={() => setHoveredStackedBar(labelIdx)}
+                      onMouseLeave={() => setHoveredStackedBar(null)}
+                    >
                       <div className="w-full h-full flex flex-col justify-end relative">
                         {/* Stacked segments */}
                         <div
-                          className="w-full transition-all hover:opacity-90"
+                          className="w-full transition-all hover:opacity-90 cursor-pointer relative"
                           style={{
                             height: `${foodSpending}%`,
                             backgroundColor: 'rgba(200, 200, 200, 0.8)',
                             borderTop: '1px solid rgba(150, 150, 150, 1)'
                           }}
-                          title={`Food Spending: ${foodSpending.toFixed(2)}%`}
-                        />
+                        >
+                          {hoveredStackedBar === labelIdx && (
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                              {foodSpending.toFixed(1)}%
+                            </div>
+                          )}
+                        </div>
                         <div
-                          className="w-full transition-all hover:opacity-90"
+                          className="w-full transition-all hover:opacity-90 cursor-pointer relative"
                           style={{
                             height: `${income}%`,
                             backgroundColor: 'rgba(0, 0, 0, 0.8)',
                             borderTop: '1px solid rgba(0, 0, 0, 1)'
                           }}
-                          title={`Income: ${income.toFixed(2)}%`}
-                        />
+                        >
+                          {hoveredStackedBar === labelIdx && (
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                              {income.toFixed(1)}%
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div className="text-xs text-gray-600 mt-2 text-center font-medium">
                         {label}
@@ -869,20 +932,20 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
     }
 
     // Line Chart
-    if (chartType.includes('Line Chart')) {
+    if (chartType.includes('Line Chart') && !chartType.includes('Combination')) {
       const maxValue = Math.max(...datasets.flatMap((d: any) => d.data))
-      const roundedMaxValue = Math.round(maxValue)
+      const roundedMaxValue = Math.ceil(maxValue)
       return (
         <div className="space-y-4">
           <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
             <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
               {[100, 80, 60, 40, 20, 0].map(val => (
-                <span key={val}>{roundedMaxValue > 0 ? Math.round(roundedMaxValue * val / 100).toLocaleString() : val}</span>
+                <span key={val}>{roundedMaxValue > 0 ? Math.ceil(roundedMaxValue * val / 100).toLocaleString() : val}</span>
               ))}
             </div>
-            <div className="ml-8 h-full">
+            <div className="ml-8 h-full relative">
               {datasets.map((dataset: any, datasetIdx: number) => (
-                <div key={datasetIdx} className="relative h-full">
+                <div key={datasetIdx} className="absolute inset-0">
                   <svg className="w-full h-full">
                     <polyline
                       points={labels.map((label: string, idx: number) => {
@@ -897,14 +960,30 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                     {labels.map((label: string, idx: number) => {
                       const x = (idx / (labels.length - 1)) * 100
                       const y = 100 - (dataset.data[idx] / maxValue * 100)
+                      const isHovered = hoveredPoint?.datasetIdx === datasetIdx && hoveredPoint?.pointIdx === idx
                       return (
-                        <circle
-                          key={idx}
-                          cx={`${x}%`}
-                          cy={`${y}%`}
-                          r="4"
-                          fill={dataset.borderColor}
-                        />
+                        <g key={idx}>
+                          <circle
+                            cx={`${x}%`}
+                            cy={`${y}%`}
+                            r={isHovered ? "6" : "4"}
+                            fill={dataset.borderColor}
+                            className="cursor-pointer transition-all"
+                            onMouseEnter={() => setHoveredPoint({datasetIdx, pointIdx: idx})}
+                            onMouseLeave={() => setHoveredPoint(null)}
+                          />
+                          {isHovered && (
+                            <text
+                              x={`${x}%`}
+                              y={`${y - 5}%`}
+                              textAnchor="middle"
+                              className="text-xs font-bold fill-gray-800"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              {dataset.data[idx].toLocaleString()}
+                            </text>
+                          )}
+                        </g>
                       )
                     })}
                   </svg>
@@ -927,17 +1006,168 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       )
     }
 
-    // Clustered Bar Chart - special rendering
-    if (data.isClustered && chartType.includes('Clustered Bar Chart')) {
+    // Combination Bar and Line Chart
+    if (chartType.includes('Combination Bar and Line Chart')) {
+      // Find bar and line datasets based on type
+      const barDatasets = datasets.filter((d: any) => d.type === 'bar')
+      const lineDatasets = datasets.filter((d: any) => d.type === 'line')
+      
       const allValues = datasets.flatMap((d: any) => d.data).filter((v: number) => !isNaN(v) && isFinite(v))
       const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
-      const roundedMaxValue = Math.round(maxValue)
+      const roundedMaxValue = Math.ceil(maxValue)
+      
+      if (maxValue === 0 || allValues.length === 0) {
+        return <div className="text-center py-8 text-gray-500">No data available</div>
+      }
+      
+      return (
+        <div className="space-y-6">
+          <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
+            <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
+              {[100, 80, 60, 40, 20, 0].map(val => (
+                <span key={val}>{roundedMaxValue > 0 ? Math.ceil(roundedMaxValue * val / 100).toLocaleString() : val}</span>
+              ))}
+            </div>
+            <div className="ml-8 h-full relative">
+              {/* Render bars */}
+              <div className="absolute inset-0 flex items-end gap-1">
+                {labels.map((label: string, labelIdx: number) => (
+                  <div key={labelIdx} className="flex-1 flex items-end gap-0.5 h-full">
+                    {barDatasets.map((dataset: any, datasetIdx: number) => {
+                      const value = dataset.data[labelIdx] || 0
+                      const height = maxValue > 0 ? (value / maxValue * 100) : 0
+                      const isHovered = hoveredComboElement?.type === 'bar' && hoveredComboElement?.labelIdx === labelIdx && hoveredComboElement?.datasetIdx === datasetIdx
+                      return (
+                        <div 
+                          key={datasetIdx} 
+                          className="flex-1 flex flex-col justify-end h-full relative"
+                          onMouseEnter={() => setHoveredComboElement({type: 'bar', labelIdx, datasetIdx})}
+                          onMouseLeave={() => setHoveredComboElement(null)}
+                        >
+                          <div
+                            className="w-full rounded-t transition-all hover:opacity-90 cursor-pointer"
+                            style={{
+                              height: `${height}%`,
+                              minHeight: height > 0 ? '4px' : '0px',
+                              backgroundColor: dataset.backgroundColor,
+                              borderColor: dataset.borderColor,
+                              borderWidth: dataset.borderWidth,
+                              borderStyle: 'solid',
+                              borderBottom: 'none'
+                            }}
+                          />
+                          {isHovered && (
+                            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20">
+                              {value.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+              {/* Render lines */}
+              <div className="absolute inset-0">
+                {lineDatasets.map((dataset: any, datasetIdx: number) => (
+                  <svg key={datasetIdx} className="w-full h-full">
+                    <polyline
+                      points={labels.map((label: string, idx: number) => {
+                        const x = ((idx + 0.5) / labels.length) * 100
+                        const value = dataset.data[idx] || 0
+                        const y = 100 - (value / maxValue * 100)
+                        return `${x}%,${y}%`
+                      }).join(' ')}
+                      fill="none"
+                      stroke={dataset.borderColor}
+                      strokeWidth={dataset.borderWidth}
+                    />
+                    {labels.map((label: string, idx: number) => {
+                      const x = ((idx + 0.5) / labels.length) * 100
+                      const value = dataset.data[idx] || 0
+                      const y = 100 - (value / maxValue * 100)
+                      const isHovered = hoveredComboElement?.type === 'line' && hoveredComboElement?.labelIdx === idx && hoveredComboElement?.datasetIdx === datasetIdx
+                      return (
+                        <g key={idx}>
+                          <circle
+                            cx={`${x}%`}
+                            cy={`${y}%`}
+                            r={isHovered ? "6" : "4"}
+                            fill={dataset.borderColor}
+                            className="cursor-pointer transition-all"
+                            onMouseEnter={() => setHoveredComboElement({type: 'line', labelIdx: idx, datasetIdx})}
+                            onMouseLeave={() => setHoveredComboElement(null)}
+                          />
+                          {isHovered && (
+                            <text
+                              x={`${x}%`}
+                              y={`${Math.max(y - 5, 10)}%`}
+                              textAnchor="middle"
+                              className="text-xs font-bold fill-gray-800"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              {value.toLocaleString()}
+                            </text>
+                          )}
+                        </g>
+                      )
+                    })}
+                  </svg>
+                ))}
+              </div>
+              {/* X-axis labels */}
+              <div className="absolute -bottom-8 left-0 right-0 flex justify-between">
+                {labels.map((label: string, idx: number) => (
+                  <div key={idx} className="text-xs text-gray-600 text-center font-medium flex-1">
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-4 justify-center mt-8">
+            {datasets.map((dataset: any, idx: number) => (
+              <div key={idx} className="flex items-center gap-2">
+                <div
+                  className="w-4 h-4"
+                  style={{ 
+                    backgroundColor: dataset.type === 'bar' ? dataset.backgroundColor : dataset.borderColor,
+                    borderRadius: dataset.type === 'line' ? '50%' : '4px'
+                  }}
+                />
+                <span className="text-sm text-gray-700">{dataset.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-sm font-semibold text-gray-700 text-center">
+            X-axis: {toolInfo?.breakdown || 'Category'}
+          </div>
+        </div>
+      )
+    }
+
+    // Clustered Bar Chart - special rendering
+    if (data.isClustered && chartType.includes('Clustered Bar Chart')) {
+      console.log('📊 Rendering Clustered Bar Chart')
+      console.log('📊 Labels:', labels)
+      console.log('📊 Datasets:', datasets.map((d: any) => ({ label: d.label, data: d.data })))
+      
+      const allValues = datasets.flatMap((d: any) => d.data).filter((v: number) => !isNaN(v) && isFinite(v))
+      const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
+      const roundedMaxValue = Math.ceil(maxValue)
+      
+      console.log('📊 All values:', allValues)
+      console.log('📊 Max value:', maxValue)
+      console.log('📊 Rounded max value:', roundedMaxValue)
       
       if (maxValue === 0 || allValues.length === 0 || isNaN(maxValue) || !isFinite(maxValue)) {
+        console.error('❌ Clustered chart has no valid data')
         return (
           <div className="text-center py-8 text-gray-500">
             <p>No data to display</p>
             <p className="text-xs mt-2">All values are zero or invalid</p>
+            <p className="text-xs mt-1">Max: {maxValue}, Count: {allValues.length}</p>
+            <p className="text-xs mt-1">Datasets: {datasets.length}, Labels: {labels.length}</p>
           </div>
         )
       }
@@ -947,31 +1177,43 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
           <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
             <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
               {[100, 80, 60, 40, 20, 0].map(val => (
-                <span key={val}>{roundedMaxValue > 0 ? Math.round(roundedMaxValue * val / 100).toLocaleString() : val}</span>
+                <span key={val}>{roundedMaxValue > 0 ? Math.ceil(roundedMaxValue * val / 100).toLocaleString() : val}</span>
               ))}
             </div>
             <div className="ml-8 h-full flex items-end gap-1">
               {labels.map((label: string, labelIdx: number) => {
+                console.log(`📊 Rendering label ${labelIdx}: "${label}"`);
                 return (
                   <div key={labelIdx} className="flex-1 flex flex-col items-center gap-0.5 h-full">
                     <div className="w-full flex items-end gap-0.5 h-full">
                       {datasets.map((dataset: any, datasetIdx: number) => {
                         if (!Array.isArray(dataset.data) || labelIdx >= dataset.data.length) {
+                          console.warn(`⚠️ Invalid data for dataset ${datasetIdx} at label ${labelIdx}`);
                           return null
                         }
                         
                         const barValue = typeof dataset.data[labelIdx] === 'number' ? dataset.data[labelIdx] : 0
                         const barHeight = maxValue > 0 && barValue > 0 ? (barValue / maxValue * 100) : 0
                         
+                        console.log(`📊 Bar [${labelIdx}][${datasetIdx}] (${dataset.label}): value=${barValue}, height=${barHeight}%`);
+                        
                         if (isNaN(barHeight) || !isFinite(barHeight)) {
+                          console.warn(`⚠️ Invalid barHeight for ${dataset.label} at ${label}`);
                           return null
                         }
                         
+                        const isHovered = hoveredClusteredBar?.labelIdx === labelIdx && hoveredClusteredBar?.datasetIdx === datasetIdx
+                        
                         return (
-                          <div key={datasetIdx} className="flex-1 flex flex-col items-center min-w-0">
+                          <div 
+                            key={datasetIdx} 
+                            className="flex-1 flex flex-col items-center min-w-0 relative"
+                            onMouseEnter={() => setHoveredClusteredBar({labelIdx, datasetIdx})}
+                            onMouseLeave={() => setHoveredClusteredBar(null)}
+                          >
                             <div className="w-full flex flex-col justify-end h-full relative">
                               <div
-                                className="w-full rounded-t transition-all hover:opacity-80"
+                                className="w-full rounded-t transition-all hover:opacity-80 cursor-pointer"
                                 style={{
                                   height: `${barHeight}%`,
                                   minHeight: barHeight > 0 ? '4px' : '0px',
@@ -982,9 +1224,13 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                                   borderBottom: 'none',
                                   boxSizing: 'border-box'
                                 }}
-                                title={`${dataset.label}: ${barValue.toLocaleString()}`}
                               />
                             </div>
+                            {isHovered && barValue > 0 && (
+                              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20">
+                                {barValue.toLocaleString()}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1018,7 +1264,7 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
     // Regular Bar Chart
     const allValues = datasets.flatMap((d: any) => d.data).filter((v: number) => !isNaN(v) && isFinite(v))
     const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0
-    const roundedMaxValue = Math.round(maxValue)
+    const roundedMaxValue = Math.ceil(maxValue)
     
     console.log('📊 Rendering Bar Chart:', { 
       labels, 
@@ -1054,7 +1300,7 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
         <div className="h-64 relative border-l-2 border-b-2 border-gray-300">
           <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs text-gray-600 pr-2">
             {[100, 80, 60, 40, 20, 0].map(val => (
-              <span key={val}>{roundedMaxValue > 0 ? Math.round(roundedMaxValue * val / 100).toLocaleString() : val}</span>
+              <span key={val}>{roundedMaxValue > 0 ? Math.ceil(roundedMaxValue * val / 100).toLocaleString() : val}</span>
             ))}
           </div>
           <div className="ml-8 h-full flex items-end gap-2">
@@ -1083,53 +1329,41 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                 height,
                 heightPercent: `${height}%`,
                 isValid: !isNaN(height) && isFinite(height) && height > 0,
-                dataAtIndex: dataset.data[labelIdx],
-                allData: dataset.data
+                dataAtIndex: dataset.data[labelIdx]
               })
               
+              const isHovered = hoveredBar === labelIdx
+              
               return (
-                <div key={labelIdx} className="flex-1 flex items-end gap-1 h-full">
-                  {datasets.map((dataset: any, datasetIdx: number) => {
-                    // Ensure we have valid data array
-                    if (!Array.isArray(dataset.data)) {
-                      console.error(`❌ Dataset ${datasetIdx} data is not an array:`, dataset.data)
-                      return null
-                    }
-                    
-                    // CRITICAL: Use the same labelIdx to access dataset.data
-                    const barValue = typeof dataset.data[labelIdx] === 'number' ? dataset.data[labelIdx] : 0
-                    const barHeight = maxValue > 0 && barValue > 0 ? (barValue / maxValue * 100) : 0
-                    
-                    // Validate calculations
-                    if (isNaN(barHeight) || !isFinite(barHeight)) {
-                      console.error(`❌ Invalid barHeight for label ${label}:`, { barValue, maxValue, barHeight })
-                      return null
-                    }
-                    
-                    return (
-                      <div key={datasetIdx} className="flex-1 flex flex-col items-center">
-                        <div className="w-full flex flex-col justify-end h-full relative">
-                          <div
-                            className="w-full rounded-t transition-all hover:opacity-80"
-                            style={{
-                              height: `${barHeight}%`,
-                              minHeight: barHeight > 0 ? '4px' : '0px',
-                              backgroundColor: dataset.backgroundColor || 'rgba(59, 130, 246, 0.6)',
-                              borderColor: dataset.borderColor || 'rgba(59, 130, 246, 1)',
-                              borderWidth: dataset.borderWidth || 2,
-                              borderStyle: 'solid',
-                              borderBottom: 'none',
-                              boxSizing: 'border-box'
-                            }}
-                            title={`${dataset.label}: ${barValue.toLocaleString()}`}
-                          />
-                        </div>
-                        <div className="text-xs text-gray-600 mt-2 text-center font-medium">
-                          {label}
-                        </div>
+                <div 
+                  key={labelIdx} 
+                  className="flex-1 flex flex-col items-center h-full"
+                  onMouseEnter={() => setHoveredBar(labelIdx)}
+                  onMouseLeave={() => setHoveredBar(null)}
+                >
+                  <div className="w-full flex flex-col justify-end h-full relative">
+                    <div
+                      className="w-full rounded-t transition-all hover:opacity-80 cursor-pointer"
+                      style={{
+                        height: `${height}%`,
+                        minHeight: height > 0 ? '4px' : '0px',
+                        backgroundColor: dataset.backgroundColor || 'rgba(59, 130, 246, 0.6)',
+                        borderColor: dataset.borderColor || 'rgba(59, 130, 246, 1)',
+                        borderWidth: dataset.borderWidth || 2,
+                        borderStyle: 'solid',
+                        borderBottom: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    {isHovered && value > 0 && (
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                        {value.toLocaleString()}
                       </div>
-                    )
-                  })}
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2 text-center font-medium">
+                    {label}
+                  </div>
                 </div>
               )
             })}
