@@ -282,7 +282,6 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       for (let i = 1; i <= 10; i++) {
         groups[`BL${i}_Male`] = []
         groups[`BL${i}_Female`] = []
-        groups[`BL${i}_Other`] = []
       }
       
       // Sample first customer to debug
@@ -316,7 +315,6 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       for (let i = 1; i <= 10; i++) {
         groups[`SP${i}_Male`] = []
         groups[`SP${i}_Female`] = []
-        groups[`SP${i}_Other`] = []
       }
       customers.forEach(c => {
         const sp = Math.round(getCSVValue(c, 'Sustainability Preference', 'sustainability_preference'))
@@ -579,7 +577,7 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
       if (breakdownLower.includes('brand loyalty') && breakdownLower.includes('gender')) {
         // Clustered: Brand Loyalty and Gender
         const primaryLabels = Array.from({ length: 10 }, (_, i) => String(i + 1)) // 1-10 for Brand Loyalty
-        const secondaryCategories = ['Male', 'Female', 'Other']
+        const secondaryCategories = ['Male', 'Female']
         
         console.log('🔧 Clustered Brand Loyalty & Gender - Available groups:', Object.keys(groups).filter(k => k.startsWith('BL')))
         console.log('🔧 Tool operation:', tool.operation)
@@ -599,8 +597,8 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
           return {
             label: gender,
             data: values,
-            backgroundColor: genderIdx === 0 ? 'rgba(59, 130, 246, 0.6)' : genderIdx === 1 ? 'rgba(16, 185, 129, 0.6)' : 'rgba(139, 92, 246, 0.6)',
-            borderColor: genderIdx === 0 ? 'rgba(59, 130, 246, 1)' : genderIdx === 1 ? 'rgba(16, 185, 129, 1)' : 'rgba(139, 92, 246, 1)',
+            backgroundColor: genderIdx === 0 ? 'rgba(59, 130, 246, 0.6)' : 'rgba(16, 185, 129, 0.6)',
+            borderColor: genderIdx === 0 ? 'rgba(59, 130, 246, 1)' : 'rgba(16, 185, 129, 1)',
             borderWidth: 2
           }
         })
@@ -1068,51 +1066,68 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                 ))}
               </div>
               {/* Render lines */}
-              <div className="absolute inset-0">
+              <div className="absolute inset-0 pointer-events-none">
                 {lineDatasets.map((dataset: any, datasetIdx: number) => (
-                  <svg key={datasetIdx} className="w-full h-full">
-                    <polyline
-                      points={labels.map((label: string, idx: number) => {
+                  <div key={datasetIdx} className="relative w-full h-full">
+                    <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                      <polyline
+                        points={labels.map((label: string, idx: number) => {
+                          const x = ((idx + 0.5) / labels.length) * 100
+                          const value = dataset.data[idx] || 0
+                          const y = 100 - (value / maxValue * 100)
+                          return `${x},${y}`
+                        }).join(' ')}
+                        fill="none"
+                        stroke={dataset.borderColor}
+                        strokeWidth="0.8"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                      {labels.map((label: string, idx: number) => {
                         const x = ((idx + 0.5) / labels.length) * 100
                         const value = dataset.data[idx] || 0
                         const y = 100 - (value / maxValue * 100)
-                        return `${x}%,${y}%`
-                      }).join(' ')}
-                      fill="none"
-                      stroke={dataset.borderColor}
-                      strokeWidth={dataset.borderWidth}
-                    />
-                    {labels.map((label: string, idx: number) => {
-                      const x = ((idx + 0.5) / labels.length) * 100
-                      const value = dataset.data[idx] || 0
-                      const y = 100 - (value / maxValue * 100)
-                      const isHovered = hoveredComboElement?.type === 'line' && hoveredComboElement?.labelIdx === idx && hoveredComboElement?.datasetIdx === datasetIdx
-                      return (
-                        <g key={idx}>
+                        return (
                           <circle
-                            cx={`${x}%`}
-                            cy={`${y}%`}
-                            r={isHovered ? "6" : "4"}
+                            key={idx}
+                            cx={x}
+                            cy={y}
+                            r="0.8"
                             fill={dataset.borderColor}
-                            className="cursor-pointer transition-all"
-                            onMouseEnter={() => setHoveredComboElement({type: 'line', labelIdx: idx, datasetIdx})}
-                            onMouseLeave={() => setHoveredComboElement(null)}
+                            vectorEffect="non-scaling-stroke"
                           />
+                        )
+                      })}
+                    </svg>
+                    {/* Hover tooltips positioned absolutely */}
+                    {labels.map((label: string, idx: number) => {
+                      const value = dataset.data[idx] || 0
+                      const isHovered = hoveredComboElement?.type === 'line' && hoveredComboElement?.labelIdx === idx && hoveredComboElement?.datasetIdx === datasetIdx
+                      const xPercent = ((idx + 0.5) / labels.length) * 100
+                      const yPercent = 100 - (value / maxValue * 100)
+                      
+                      return (
+                        <div
+                          key={idx}
+                          className="absolute pointer-events-auto cursor-pointer"
+                          style={{
+                            left: `${xPercent}%`,
+                            top: `${yPercent}%`,
+                            transform: 'translate(-50%, -50%)',
+                            width: '16px',
+                            height: '16px'
+                          }}
+                          onMouseEnter={() => setHoveredComboElement({type: 'line', labelIdx: idx, datasetIdx})}
+                          onMouseLeave={() => setHoveredComboElement(null)}
+                        >
                           {isHovered && (
-                            <text
-                              x={`${x}%`}
-                              y={`${Math.max(y - 5, 10)}%`}
-                              textAnchor="middle"
-                              className="text-xs font-bold fill-gray-800"
-                              style={{ pointerEvents: 'none' }}
-                            >
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20">
                               {value.toLocaleString()}
-                            </text>
+                            </div>
                           )}
-                        </g>
+                        </div>
                       )
                     })}
-                  </svg>
+                  </div>
                 ))}
               </div>
               {/* X-axis labels */}
@@ -1184,8 +1199,8 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
               {labels.map((label: string, labelIdx: number) => {
                 console.log(`📊 Rendering label ${labelIdx}: "${label}"`);
                 return (
-                  <div key={labelIdx} className="flex-1 flex flex-col items-center gap-0.5 h-full">
-                    <div className="w-full flex items-end gap-0.5 h-full">
+                  <div key={labelIdx} className="flex-1 h-full relative flex flex-col">
+                    <div className="w-full flex items-end gap-0.5 flex-1">
                       {datasets.map((dataset: any, datasetIdx: number) => {
                         if (!Array.isArray(dataset.data) || labelIdx >= dataset.data.length) {
                           console.warn(`⚠️ Invalid data for dataset ${datasetIdx} at label ${labelIdx}`);
@@ -1207,25 +1222,23 @@ export default function AnalyticsVisualization({ tool, gameId, onClose }: Visual
                         return (
                           <div 
                             key={datasetIdx} 
-                            className="flex-1 flex flex-col items-center min-w-0 relative"
+                            className="flex-1 h-full relative flex items-end justify-center"
                             onMouseEnter={() => setHoveredClusteredBar({labelIdx, datasetIdx})}
                             onMouseLeave={() => setHoveredClusteredBar(null)}
                           >
-                            <div className="w-full flex flex-col justify-end h-full relative">
-                              <div
-                                className="w-full rounded-t transition-all hover:opacity-80 cursor-pointer"
-                                style={{
-                                  height: `${barHeight}%`,
-                                  minHeight: barHeight > 0 ? '4px' : '0px',
-                                  backgroundColor: dataset.backgroundColor || 'rgba(59, 130, 246, 0.6)',
-                                  borderColor: dataset.borderColor || 'rgba(59, 130, 246, 1)',
-                                  borderWidth: dataset.borderWidth || 2,
-                                  borderStyle: 'solid',
-                                  borderBottom: 'none',
-                                  boxSizing: 'border-box'
-                                }}
-                              />
-                            </div>
+                            <div
+                              className="w-full rounded-t transition-all hover:opacity-80 cursor-pointer"
+                              style={{
+                                height: `${barHeight}%`,
+                                minHeight: barHeight > 0 ? '4px' : '0px',
+                                backgroundColor: dataset.backgroundColor || 'rgba(59, 130, 246, 0.6)',
+                                borderColor: dataset.borderColor || 'rgba(59, 130, 246, 1)',
+                                borderWidth: dataset.borderWidth || 2,
+                                borderStyle: 'solid',
+                                borderBottom: 'none',
+                                boxSizing: 'border-box'
+                              }}
+                            />
                             {isHovered && barValue > 0 && (
                               <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20">
                                 {barValue.toLocaleString()}

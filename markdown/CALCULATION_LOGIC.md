@@ -62,40 +62,7 @@ revenue = demand × price
 
 ---
 
-## 4. COGS (Cost of Goods Sold)
-
-**Formula:**
-```
-COGS = revenue × (1 - margin_percentage)
-```
-
-**Where:**
-- `margin_percentage` = product-specific margin (varies by product, e.g., 0.65 = 65%)
-
-**Example:**
-- revenue = 300,000, margin = 65%
-- COGS = 300,000 × (1 - 0.65) = 300,000 × 0.35 = 105,000
-
----
-
-## 5. Operating Cost
-
-**Formula:**
-```
-operating_cost = base_operating_cost + (demand × 0.5)
-```
-
-**Where:**
-- `base_operating_cost` = admin-configured fixed cost per week (default: 20,000)
-- `0.5` = per-unit logistics cost (fixed)
-
-**Example:**
-- base = 20,000, demand = 6,000
-- operating_cost = 20,000 + (6,000 × 0.5) = 20,000 + 3,000 = 23,000
-
----
-
-## 6. R&D Cost & Multiplier
+## 4. R&D Cost & Multiplier
 
 **R&D Cost Formula:**
 ```
@@ -129,7 +96,7 @@ If R&D fails:
 
 ---
 
-## 7. Analytics Cost
+## 5. Analytics Cost
 
 **Formula:**
 ```
@@ -146,7 +113,7 @@ analytics_cost = analytics_quantity × cost_per_analytics
 
 ---
 
-## 8. Total Costs
+## 6. Total Costs
 
 **Formula:**
 ```
@@ -155,21 +122,7 @@ total_costs = COGS + operating_cost + rnd_cost + analytics_cost
 
 ---
 
-## 9. Profit
-
-**Formula:**
-```
-profit = revenue - total_costs
-
-If bonus_multiplier_pending exists:
-  profit = profit × bonus_multiplier_pending
-
-profit = MAX(-10,000, profit)  // Minimum loss capped at -10k
-```
-
----
-
-## 10. Balance Update
+## 7. Balance Update
 
 **Formula:**
 ```
@@ -181,7 +134,7 @@ new_balance = current_balance + profit + milestone_awards
 
 ---
 
-## 11. Funding Stage Advancement
+## 8. Funding Stage Advancement
 
 **Requirements (all must be met):**
 ```
@@ -203,7 +156,7 @@ For each stage (Seed, Series A, Series B, Series C):
 
 ---
 
-## 12. Milestone Awards (Balance Awards)
+## 9. Milestone Awards (Balance Awards)
 
 **When:** Team reaches a new funding stage
 
