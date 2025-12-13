@@ -58,9 +58,11 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
 
   // Set up real-time subscriptions
   useEffect(() => {
+    console.log('🔌 Setting up real-time subscriptions for game:', gameId)
+    
     // Set up real-time subscription for team balance updates
     const teamsChannel = supabase
-      .channel('teams_monitoring_updates')
+      .channel('lobby_teams_realtime')
       .on(
         'postgres_changes',
         {
@@ -70,17 +72,15 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
           filter: `game_id=eq.${gameId}`
         },
         (payload) => {
-          console.log('Team updated:', payload)
+          console.log('👥 Team updated:', payload)
           loadTeams()
         }
       )
-      .subscribe((status) => {
-        console.log('Teams channel subscription status:', status)
-      })
+      .subscribe()
     
     // Set up real-time subscription for weekly_results (submission tracking)
     const resultsChannel = supabase
-      .channel('weekly_results_monitoring')
+      .channel('lobby_results_realtime')
       .on(
         'postgres_changes',
         {
@@ -89,22 +89,20 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
           table: 'weekly_results'
         },
         (payload) => {
-          console.log('Weekly results changed:', payload)
-          // Reload submission status with current week
-          if (currentWeek > 0) {
-            loadSubmissionStatus(currentWeek)
-          }
-          // Also reload teams in case balances changed
+          console.log('📝 Student submitted! Weekly results changed:', payload)
+          
+          // Immediately reload game settings and submission status
+          loadGameSettings().then(() => {
+            console.log('✅ Submission status reloaded')
+          })
           loadTeams()
         }
       )
-      .subscribe((status) => {
-        console.log('Weekly results channel subscription status:', status)
-      })
+      .subscribe()
     
     // Set up subscription for game_settings to detect week changes
     const settingsChannel = supabase
-      .channel('game_settings_monitoring')
+      .channel('lobby_settings_realtime')
       .on(
         'postgres_changes',
         {
@@ -114,23 +112,24 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
           filter: `game_id=eq.${gameId}`
         },
         (payload) => {
-          console.log('Game settings updated:', payload)
+          console.log('⚙️ Game settings updated:', payload)
           // Reload everything when week advances
           loadGameSettings()
           loadTeams()
         }
       )
-      .subscribe((status) => {
-        console.log('Game settings channel subscription status:', status)
-      })
+      .subscribe()
+    
+    console.log('✅ Real-time subscriptions established')
     
     return () => {
+      console.log('🔌 Cleaning up real-time subscriptions')
       supabase.removeChannel(teamsChannel)
       supabase.removeChannel(resultsChannel)
       supabase.removeChannel(settingsChannel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, currentWeek])
+  }, [gameId])
 
   const loadGameSettings = async () => {
     try {
@@ -142,7 +141,7 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
       
       if (settings) {
         setCurrentWeek(settings.current_week)
-        loadSubmissionStatus(settings.current_week)
+        await loadSubmissionStatus(settings.current_week)
       }
     } catch (error) {
       console.error('Error loading game settings:', error)
