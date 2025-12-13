@@ -574,7 +574,7 @@ export default function StudentGameplay() {
           <div className="bg-gradient-to-br from-[#E63946] to-[#C1121F] text-white px-10 py-8 rounded-t-3xl">
             <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
               <div className="h-[42px] w-[144px] overflow-hidden flex items-center">
-                <NextImage src="/logo_white.png" alt="InnoQuest" width={592} height={188} className="w-[144px] h-auto" priority />
+                <NextImage src="/logo_white.PNG" alt="InnoQuest" width={592} height={188} className="w-[144px] h-auto" priority />
               </div>
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 px-4 py-2 rounded-xl font-semibold text-sm text-center">

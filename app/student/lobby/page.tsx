@@ -179,7 +179,7 @@ export default function StudentLobby() {
             <div className="flex justify-between items-center">
               <div>
                 <div className="mb-2 h-[54px] w-[180px] overflow-hidden flex items-center">
-                  <NextImage src="/logo_white.png" alt="InnoQuest" width={592} height={188} className="w-[180px] h-auto" priority />
+                  <NextImage src="/logo_white.PNG" alt="InnoQuest" width={592} height={188} className="w-[180px] h-auto" priority />
                 </div>
                 <h1 className="text-2xl font-bold mb-2">Welcome!</h1>
                 <p className="text-red-100 text-lg">Logged in as: <span className="font-semibold">{teamName}</span></p>
