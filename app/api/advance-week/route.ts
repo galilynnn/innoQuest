@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
                   total_balance: initialCapital,
                   funding_stage: 'Pre-Seed',
                   successful_rnd_tests: 0,
+                  cumulative_rnd_multiplier: 1.0, // Reset cumulative multiplier on loss
                   updated_at: new Date().toISOString()
                 })
                 .eq('team_id', team.team_id)
@@ -152,7 +153,7 @@ export async function POST(request: NextRequest) {
               // Reload team data to get updated balance
               const { data: updatedTeam } = await supabase
                 .from('teams')
-                .select('total_balance, funding_stage, successful_rnd_tests')
+                .select('total_balance, funding_stage, successful_rnd_tests, cumulative_rnd_multiplier')
                 .eq('team_id', team.team_id)
                 .single()
               
@@ -160,6 +161,8 @@ export async function POST(request: NextRequest) {
                 team.total_balance = updatedTeam.total_balance
                 team.funding_stage = updatedTeam.funding_stage
                 team.successful_rnd_tests = updatedTeam.successful_rnd_tests
+                // @ts-ignore
+                team.cumulative_rnd_multiplier = updatedTeam.cumulative_rnd_multiplier
               }
             }
           }
@@ -329,6 +332,8 @@ export async function POST(request: NextRequest) {
           successful_rnd_tests: team.successful_rnd_tests || 0,
           bonus_multiplier_pending: team.bonus_multiplier_pending || null,
           avg_purchase_probability: avgPurchaseProbability, // This is a percentage (0-100)
+          // @ts-ignore
+          cumulative_rnd_multiplier: team.cumulative_rnd_multiplier || 1.0, // Pass cumulative multiplier for stacking
         }
 
         console.log({
@@ -419,8 +424,22 @@ export async function POST(request: NextRequest) {
             })
             const baseDemand = calculateDemand(calculationInput.avg_purchase_probability, calculationInput.population_size)
             
-            // Apply R&D multiplier to demand (if any test succeeded, use the highest multiplier)
+            // Apply CUMULATIVE multiplier first (from all past successful R&D)
             let demand = baseDemand
+            // @ts-ignore
+            const cumulativeMultiplier = team.cumulative_rnd_multiplier || 1.0
+            if (cumulativeMultiplier !== 1.0) {
+              const demandBeforeCumulative = demand
+              demand = Math.round(demand * cumulativeMultiplier)
+              console.log({
+                cumulative_multiplier: cumulativeMultiplier,
+                demand_before: demandBeforeCumulative,
+                demand_after: demand,
+                calculation: `${demandBeforeCumulative} × ${cumulativeMultiplier} = ${demand}`
+              })
+            }
+            
+            // Apply CURRENT WEEK R&D multiplier (if any test succeeded this week)
             if (combinedSuccess || firstTest || secondTest) {
               const demandBeforeMultiplier = demand
               demand = Math.round(demand * combinedMultiplier)
@@ -490,6 +509,19 @@ export async function POST(request: NextRequest) {
               calculationInput.investment_config
             )
 
+            // Calculate new cumulative multiplier
+            // @ts-ignore
+            let newCumulativeMultiplier = team.cumulative_rnd_multiplier || 1.0
+            if (combinedSuccess && combinedMultiplier > 1.0 && !isInsufficient) {
+              newCumulativeMultiplier = newCumulativeMultiplier * combinedMultiplier
+              console.log(`✅ R&D Success (two-test)! Stacking multiplier:`, {
+                previous_cumulative: team.cumulative_rnd_multiplier || 1.0,
+                current_week_multiplier: combinedMultiplier,
+                new_cumulative: newCumulativeMultiplier,
+                calculation: `${team.cumulative_rnd_multiplier || 1.0} × ${combinedMultiplier} = ${newCumulativeMultiplier}`
+              })
+            }
+
             results = {
               demand,
               revenue,
@@ -506,6 +538,7 @@ export async function POST(request: NextRequest) {
               next_funding_stage: isInsufficient ? 'Pre-Seed' : nextStage,
               funding_advanced: qualifiesForNextStage && !isInsufficient, // Can advance if not insufficient
               bonus_multiplier_applied: isInsufficient ? null : (calculationInput.bonus_multiplier_pending || null),
+              new_cumulative_rnd_multiplier: isInsufficient ? 1.0 : newCumulativeMultiplier, // Reset to 1.0 on loss
             }
 
             // Note: rnd_tests table updates are handled later in the code (after weekly_results update)
@@ -559,6 +592,7 @@ export async function POST(request: NextRequest) {
               results.next_funding_stage = 'Pre-Seed'
               results.funding_advanced = false
               results.bonus_multiplier_applied = null
+              results.new_cumulative_rnd_multiplier = 1.0 // Reset to 1.0 on loss
             }
             
             // Record first test output so we can update rnd_tests history to match engine
@@ -759,6 +793,15 @@ export async function POST(request: NextRequest) {
           // Normal round - no loss
           // Normal calculation
           newBalance = currentBalance + results.profit
+          console.log(`💰 Balance Calculation for ${team.team_name}:`, {
+            currentBalance,
+            profit: results.profit,
+            total_costs: results.total_costs,
+            rnd_cost: results.rnd_cost,
+            analytics_cost: results.analytics_cost,
+            newBalance,
+            calculation: `${currentBalance} + (${results.profit}) = ${newBalance}`
+          })
           // Count how many R&D tests were successful this week (supports two-test strategies)
           let successIncrement = 0
           if (weeklyResult.rnd_tier_2) {
@@ -864,6 +907,19 @@ export async function POST(request: NextRequest) {
           initialCapitalType: typeof initialCapital
         })
         
+        // Calculate new cumulative multiplier for update
+        // @ts-ignore
+        const newCumulativeMultiplier = lostRound ? 1.0 : (results.new_cumulative_rnd_multiplier || team.cumulative_rnd_multiplier || 1.0)
+        
+        console.log(`📊 Cumulative Multiplier Update:`, {
+          team: team.team_name,
+          lostRound,
+          old_cumulative: team.cumulative_rnd_multiplier || 1.0,
+          new_cumulative: newCumulativeMultiplier,
+          rnd_success_this_week: results.rnd_success,
+          current_week_multiplier: results.rnd_multiplier
+        })
+        
         const { data: teamUpdateData, error: teamUpdateError } = await supabase
           .from('teams')
           .update({
@@ -871,10 +927,20 @@ export async function POST(request: NextRequest) {
             successful_rnd_tests: newSuccessfulTests,
             funding_stage: newFundingStage,
             bonus_multiplier_pending: null, // Clear the bonus after applying it
+            cumulative_rnd_multiplier: newCumulativeMultiplier, // Update cumulative multiplier (reset to 1.0 on loss)
             updated_at: new Date().toISOString()
           })
           .eq('team_id', team.team_id)
           .select()
+          
+        console.log(`✅ Team ${team.team_name} updated successfully:`, {
+          old_balance: currentBalance,
+          new_balance: Number(newBalance),
+          balance_change: Number(newBalance) - currentBalance,
+          successful_rnd_tests: newSuccessfulTests,
+          funding_stage: newFundingStage,
+          cumulative_multiplier: newCumulativeMultiplier
+        })
           
         if (teamUpdateError) {
           console.error(`❌ Failed to update team ${team.team_name}:`, teamUpdateError)

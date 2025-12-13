@@ -106,6 +106,7 @@ export interface WeeklyCalculationInput {
   current_funding_stage?: string // Team's current funding stage
   successful_rnd_tests?: number // Team's total successful R&D tests
   bonus_multiplier_pending?: number | null // Admin-granted bonus multiplier for this week
+  cumulative_rnd_multiplier?: number // Cumulative product of all past successful R&D multipliers (stacks over time)
 }
 
 export interface WeeklyCalculationResult {
@@ -124,6 +125,7 @@ export interface WeeklyCalculationResult {
   next_funding_stage?: string // New funding stage if advanced
   funding_advanced?: boolean // Whether funding stage advanced this week
   bonus_multiplier_applied?: number | null // Bonus multiplier that was applied this week
+  new_cumulative_rnd_multiplier: number // Updated cumulative multiplier to store in teams table
 }
 
 /**
@@ -358,12 +360,25 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   const baseDemand = calculateDemand(avgPurchaseProbability, populationSize)
   console.log(`✅ Base Demand Result: ${baseDemand} units`)
   
-  // Apply R&D multiplier to demand (if R&D was done)
+  // Apply CUMULATIVE R&D multiplier first (stacks from all past successful R&D)
   let demand = baseDemand
+  const cumulativeMultiplier = input.cumulative_rnd_multiplier || 1.0
+  if (cumulativeMultiplier !== 1.0) {
+    const demandBeforeCumulative = demand
+    demand = Math.round(demand * cumulativeMultiplier)
+    console.log(`📈 Step 1.5 - Apply CUMULATIVE R&D Multiplier (from past weeks):`, {
+      cumulative_multiplier: cumulativeMultiplier,
+      demand_before: demandBeforeCumulative,
+      demand_after: demand,
+      calculation: `${demandBeforeCumulative} × ${cumulativeMultiplier} = ${demand}`
+    })
+  }
+  
+  // Apply CURRENT WEEK R&D multiplier (if R&D was done this week)
   if (rndTested) {
     const demandBeforeMultiplier = demand
     demand = Math.round(demand * rndMultiplier)
-    console.log(`🔬 Step 1.5 - Apply R&D Multiplier:`, {
+    console.log(`🔬 Step 1.6 - Apply CURRENT WEEK R&D Multiplier:`, {
       rnd_success: rndSuccess,
       multiplier: rndMultiplier,
       demand_before: demandBeforeMultiplier,
@@ -373,12 +388,12 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   }
   
   // Apply admin-granted bonus multiplier to demand (if present)
-  // NOTE: This multiplier affects DEMAND only, NOT Balance Awards
+  // NOTE: This multiplier affects DEMAND only, NOT Balance Awards (one-time use)
   const bonusMultiplierApplied = input.bonus_multiplier_pending || null
   if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 0) {
     const demandBeforeBonus = demand
     demand = Math.round(demand * bonusMultiplierApplied)
-    console.log(`🎁 Step 1.6 - Apply Admin Bonus Multiplier:`, {
+    console.log(`🎁 Step 1.7 - Apply Admin Bonus Multiplier (one-time):`, {
       bonus_multiplier: bonusMultiplierApplied,
       demand_before: demandBeforeBonus,
       demand_after: demand,
@@ -420,6 +435,19 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
     input.investment_config
   )
 
+  // Calculate new cumulative multiplier for stacking
+  // If R&D succeeded this week, multiply current cumulative by this week's multiplier
+  let newCumulativeMultiplier = input.cumulative_rnd_multiplier || 1.0
+  if (rndSuccess && rndMultiplier > 1.0) {
+    newCumulativeMultiplier = newCumulativeMultiplier * rndMultiplier
+    console.log(`✅ R&D Success! Stacking multiplier:`, {
+      previous_cumulative: input.cumulative_rnd_multiplier || 1.0,
+      current_week_multiplier: rndMultiplier,
+      new_cumulative: newCumulativeMultiplier,
+      calculation: `${input.cumulative_rnd_multiplier || 1.0} × ${rndMultiplier} = ${newCumulativeMultiplier}`
+    })
+  }
+
   return {
     demand: demand,
     revenue,
@@ -436,6 +464,7 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
     next_funding_stage: nextStage,
     funding_advanced: qualifiesForNextStage,
     bonus_multiplier_applied: bonusMultiplierApplied,
+    new_cumulative_rnd_multiplier: newCumulativeMultiplier,
   }
 }
 
