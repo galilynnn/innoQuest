@@ -88,14 +88,39 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
           schema: 'public',
           table: 'weekly_results'
         },
-        (payload) => {
+        async (payload) => {
           console.log('📝 Student submitted! Weekly results changed:', payload)
           
-          // Immediately reload game settings and submission status
-          loadGameSettings().then(() => {
-            console.log('✅ Submission status reloaded')
-          })
-          loadTeams()
+          // Get current week directly from database
+          const { data: settings } = await supabase
+            .from('game_settings')
+            .select('current_week')
+            .eq('game_id', gameId)
+            .single()
+          
+          if (settings?.current_week) {
+            console.log('🔄 Reloading submission status for week:', settings.current_week)
+            // Reload submission status directly with the week number
+            const { data: allTeams } = await supabase
+              .from('teams')
+              .select('team_id')
+              .eq('game_id', gameId)
+
+            const { data: submissions } = await supabase
+              .from('weekly_results')
+              .select('team_id')
+              .eq('week_number', settings.current_week)
+
+            const statusMap = new Map<string, boolean>()
+            allTeams?.forEach(team => {
+              const hasSubmitted = submissions?.some(s => s.team_id === team.team_id) || false
+              statusMap.set(team.team_id, hasSubmitted)
+            })
+
+            setSubmissionStatus(statusMap)
+            setLastUpdated(new Date())
+            console.log('✅ Submission status updated in real-time')
+          }
         }
       )
       .subscribe()
@@ -237,6 +262,16 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
     loadWeeklyResults(team.team_id)
   }
 
+  const handleRefresh = async () => {
+    console.log('🔄 Manual refresh clicked')
+    await loadTeams()
+    if (currentWeek > 0) {
+      await loadSubmissionStatus(currentWeek)
+    }
+    setLastUpdated(new Date())
+    console.log('✅ Submission status refreshed')
+  }
+
   const handleBonusToggle = async (teamId: string, currentBonus: number | null, currentStage: string) => {
     try {
       let newValue = null
@@ -320,9 +355,9 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-serif font-bold">Teams Leaderboard</h3>
           <button
-            onClick={loadTeams}
+            onClick={handleRefresh}
             className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-md text-xs font-semibold transition-all"
-            title="Refresh team data"
+            title="Refresh submission status"
           >
             🔄
           </button>
