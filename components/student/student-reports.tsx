@@ -173,30 +173,25 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                   tests = [{ tier: result.rnd_tier, success: result.rnd_success }]
                 }
                 
-                // For "two-if-fail" strategy with rnd_tier_2: ensure both tests are shown if second was run
-                // If rnd_tests has both tests, they should already be included
-                // If rnd_tests only has first test but rnd_tier_2 exists, check if second test should be shown
-                if (result.rnd_strategy === 'two-if-fail' && result.rnd_tier_2) {
-                  const hasSecondTest = tests.some(t => t.tier === result.rnd_tier_2)
-                  console.log(`🔍 Week ${result.week_number} two-if-fail check:`, {
-                    hasSecondTest,
-                    testsCount: tests.length,
-                    firstTier: result.rnd_tier,
-                    secondTier: result.rnd_tier_2,
-                    tests: tests.map(t => t.tier)
-                  })
-                  // If second test exists in rnd_tests, it means first test failed and second was run
-                  // If second test doesn't exist, it means first test passed and second wasn't run (correct behavior)
-                  // So we don't need to add it manually - it should already be in rnd_tests if it was run
-                }
+                // For "two-always" and "two-if-fail" strategies with rnd_tier_2: 
+                // The rnd_tests table should have all tests that were actually run
+                // Just return whatever tests exist in the database - they are already correct
+                console.log(`🔍 Week ${result.week_number} tests:`, {
+                  strategy: result.rnd_strategy,
+                  testsCount: tests.length,
+                  firstTier: result.rnd_tier,
+                  secondTier: result.rnd_tier_2,
+                  tests: tests.map(t => ({ tier: t.tier, success: t.success }))
+                })
                 
-                return tests.filter(test => test.tier)
+                // Attach week_number to each test so we can match it correctly later
+                return tests.filter(test => test.tier).map(test => ({
+                  ...test,
+                  week_number: result.week_number
+                }))
               }).map((test, globalIndex) => {
-                // Find the result this test belongs to
-                const result = results.find(r => 
-                  (r.rnd_tests && r.rnd_tests.some(t => 'id' in test && t.id === test.id)) || 
-                  (r.rnd_tier === test.tier && r.rnd_success === test.success)
-                )
+                // Find the result this test belongs to using week_number
+                const result = results.find(r => r.week_number === test.week_number)
                 
                 if (!result) return null
                 
@@ -241,17 +236,14 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                             : 'N/A')
                   
                   // Display actual multiplier from database (already calculated, need to convert to percentage)
-                  // Use `!= null` so 0 is still shown. Fall back to admin-configured range if actual value not available.
-                  // Only show multiplier when the test has passed
-                  const showMultiplier = test.success || result.rnd_success
-
-                  const multiplier = showMultiplier
+                  // Only show multiplier when the test has passed (show "-" for failed tests)
+                  const multiplier = test.success
                     ? (result.rnd_multiplier != null
                         ? (result.rnd_multiplier * 100).toFixed(0)
                         : (fallbackCacheRef.current[key].multiplier != null
                             ? String(fallbackCacheRef.current[key].multiplier)
                             : 'N/A'))
-                    : null
+                    : '-'
                   
                   console.log(`🔍 Calculated display values:`, {
                     passProb,
@@ -276,7 +268,7 @@ export default function StudentReports({ team, gameSettings }: StudentReportsPro
                       </td>
                       <td className="text-center">{
                         test.tier ? (
-                          multiplier == null ? '-' : `${multiplier}%`
+                          multiplier === '-' ? '-' : `${multiplier}%`
                         ) : '-'
                       }</td>
                       <td className="text-center">

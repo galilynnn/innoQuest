@@ -387,13 +387,26 @@ export async function POST(request: NextRequest) {
               secondTest = null
             }
 
-            // Now compute combined results: pick the highest multiplier among successful tests,
-            // sum the costs, success if any test succeeded, and choose the probability from the run that succeeded first.
+            // Compute combined results:
+            // - Success if ANY test succeeded
+            // - Cost is ALWAYS the sum of all tests run (even if they fail)
+            // - Multiplier: if both tests succeeded, MULTIPLY them together (stacked effect)
+            //               if only one succeeded, use that multiplier
+            //               if both failed, multiplier is 1.0 (no bonus)
             let combinedSuccess = firstTest.success || (secondTest?.success || false)
-            let combinedMultiplier = firstTest.multiplier
-            if (secondTest && secondTest.success && secondTest.multiplier > combinedMultiplier) {
+            let combinedMultiplier = 1.0
+            
+            if (firstTest.success && secondTest?.success) {
+              // Both tests succeeded - stack the multipliers
+              combinedMultiplier = firstTest.multiplier * secondTest.multiplier
+            } else if (firstTest.success) {
+              // Only first test succeeded
+              combinedMultiplier = firstTest.multiplier
+            } else if (secondTest?.success) {
+              // Only second test succeeded
               combinedMultiplier = secondTest.multiplier
             }
+            
             let combinedCost = firstTest.cost + (secondTest ? secondTest.cost : 0)
             const successProbability = firstTest.success ? firstTest.successProbability : (secondTest ? secondTest.successProbability : firstTest.successProbability)
 

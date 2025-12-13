@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import TeamWeeklyHistory from './team-weekly-history'
 
 interface Team {
   team_id: string
@@ -27,6 +28,7 @@ interface GameMonitoringProps {
 }
 
 export default function GameMonitoring({ gameId }: GameMonitoringProps) {
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'history'>('leaderboard')
   const supabase = createClient()
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
@@ -173,7 +175,34 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-6">
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      {/* <div className="flex border-b border-gray-200">
+        <button
+          onClick={() => setActiveTab('leaderboard')}
+          className={`px-6 py-3 font-semibold transition-colors border-b-2 ${
+            activeTab === 'leaderboard'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Live Leaderboard
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-6 py-3 font-semibold transition-colors border-b-2 ${
+            activeTab === 'history'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Weekly History
+        </button>
+      </div> */}
+
+      {/* Tab Content */}
+      {/* {activeTab === 'leaderboard' ? ( */}
+        <div className="grid grid-cols-3 gap-6">
       <div className="col-span-1">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-serif font-bold">Teams Leaderboard</h3>
@@ -293,6 +322,10 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
           </div>
         )}
       </div>
+    </div>
+      {/* ) : (
+        <TeamWeeklyHistory gameId={gameId} />
+      )} */}
     </div>
   )
 }
