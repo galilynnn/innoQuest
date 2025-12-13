@@ -713,7 +713,7 @@ export async function POST(request: NextRequest) {
         const currentBalance = team.total_balance || 0
         const lostRoundFromSet = teamsThatLostRound.has(team.team_id)
         const lostRoundFromResults = results.revenue === 0 && results.demand === 0 && results.pass_fail_status === 'fail'
-        const lostRound = lostRoundFromSet || lostRoundFromResults
+        let lostRound = lostRoundFromSet || lostRoundFromResults
         
         console.log({
           lostRoundFromSet,
@@ -793,46 +793,89 @@ export async function POST(request: NextRequest) {
           // Normal round - no loss
           // Normal calculation
           newBalance = currentBalance + results.profit
-          console.log(`💰 Balance Calculation for ${team.team_name}:`, {
-            currentBalance,
-            profit: results.profit,
-            total_costs: results.total_costs,
-            rnd_cost: results.rnd_cost,
-            analytics_cost: results.analytics_cost,
-            newBalance,
-            calculation: `${currentBalance} + (${results.profit}) = ${newBalance}`
-          })
-          // Count how many R&D tests were successful this week (supports two-test strategies)
-          let successIncrement = 0
-          if (weeklyResult.rnd_tier_2) {
-            const firstSuccess = firstTest?.success ?? results.rnd_success
-            // For "two-if-fail" strategy: only count second test if it was actually run (i.e., first test failed)
-            // For "two-always" strategy: always count second test if it exists
-            let secondSuccess = false
-            if (weeklyResult.rnd_strategy === 'two-always' && secondTest) {
-              // For "two-always", second test is always run, so count it
-              secondSuccess = secondTest.success
-            } else if (weeklyResult.rnd_strategy === 'two-if-fail' && secondTest && !firstTest.success) {
-              // For "two-if-fail", only count second test if first failed and second was run
-              secondSuccess = secondTest.success
-            }
-            // If strategy is "two-if-fail" and first test passed, secondSuccess remains false (correct behavior)
-            successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
-            
-            console.log({
-              strategy: weeklyResult.rnd_strategy,
-              firstSuccess,
-              secondSuccess,
-              secondTestExists: !!secondTest,
-              firstTestPassed: firstTest?.success,
-              successIncrement
+          
+          // CRITICAL: Check if balance would go negative - this means insufficient funds
+          if (newBalance < 0) {
+            console.log(`⚠️ Balance would go negative! Treating as lost round:`, {
+              currentBalance,
+              profit: results.profit,
+              total_costs: results.total_costs,
+              calculatedBalance: newBalance
             })
+            
+            // Mark as lost round and reset
+            lostRound = true
+            teamsThatLostRound.add(team.team_id)
+            
+            // Reset balance to initial capital
+            const resetBalance = Number(initialCapital) || 0
+            newBalance = resetBalance > 0 ? resetBalance : 500000
+            newSuccessfulTests = 0
+            newFundingStage = 'Pre-Seed'
+            
+            // Override results to reflect loss
+            results.demand = 0
+            results.revenue = 0
+            results.pass_fail_status = 'fail'
+            results.bonus = 0
+            results.funding_advanced = false
+            results.next_funding_stage = 'Pre-Seed'
+            
+            if (firstTest) {
+              firstTest.success = false
+              firstTest.multiplier = 1.0
+            }
+            if (secondTest) {
+              secondTest.success = false
+              secondTest.multiplier = 1.0
+            }
           } else {
-            successIncrement = results.rnd_success ? 1 : 0
+            // Normal balance calculation succeeded
+            console.log(`💰 Balance Calculation for ${team.team_name}:`, {
+              currentBalance,
+              profit: results.profit,
+              total_costs: results.total_costs,
+              rnd_cost: results.rnd_cost,
+              analytics_cost: results.analytics_cost,
+              newBalance,
+              calculation: `${currentBalance} + (${results.profit}) = ${newBalance}`
+            })
           }
           
-          newSuccessfulTests = (team.successful_rnd_tests || 0) + successIncrement
-          newFundingStage = results.next_funding_stage || team.funding_stage || 'Pre-Seed'
+          // Count how many R&D tests were successful this week (supports two-test strategies)
+          // Only count successes if round was not lost
+          let successIncrement = 0
+          if (!lostRound) {
+            if (weeklyResult.rnd_tier_2) {
+              const firstSuccess = firstTest?.success ?? results.rnd_success
+              // For "two-if-fail" strategy: only count second test if it was actually run (i.e., first test failed)
+              // For "two-always" strategy: always count second test if it exists
+              let secondSuccess = false
+              if (weeklyResult.rnd_strategy === 'two-always' && secondTest) {
+                // For "two-always", second test is always run, so count it
+                secondSuccess = secondTest.success
+              } else if (weeklyResult.rnd_strategy === 'two-if-fail' && secondTest && !firstTest.success) {
+                // For "two-if-fail", only count second test if first failed and second was run
+                secondSuccess = secondTest.success
+              }
+              // If strategy is "two-if-fail" and first test passed, secondSuccess remains false (correct behavior)
+              successIncrement = (firstSuccess ? 1 : 0) + (secondSuccess ? 1 : 0)
+            
+              console.log({
+                strategy: weeklyResult.rnd_strategy,
+                firstSuccess,
+                secondSuccess,
+                secondTestExists: !!secondTest,
+                firstTestPassed: firstTest?.success,
+                successIncrement
+              })
+            } else {
+              successIncrement = results.rnd_success ? 1 : 0
+            }
+            
+            newSuccessfulTests = (team.successful_rnd_tests || 0) + successIncrement
+            newFundingStage = results.next_funding_stage || team.funding_stage || 'Pre-Seed'
+          }
         }
         
         // Update team with new balance, successful tests, funding stage, and CLEAR bonus multiplier

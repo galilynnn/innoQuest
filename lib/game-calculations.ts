@@ -387,13 +387,12 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
     })
   }
   
-  // Apply admin-granted bonus multiplier to demand (if present)
-  // NOTE: This multiplier affects DEMAND only, NOT Balance Awards (one-time use)
+  // Apply admin-granted bonus multiplier to DEMAND (one-time boost)
   const bonusMultiplierApplied = input.bonus_multiplier_pending || null
-  if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 0) {
+  if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 1.0) {
     const demandBeforeBonus = demand
     demand = Math.round(demand * bonusMultiplierApplied)
-    console.log(`🎁 Step 1.7 - Apply Admin Bonus Multiplier (one-time):`, {
+    console.log(`🎁 Step 1.7 - Apply Admin Bonus Multiplier to DEMAND (one-time):`, {
       bonus_multiplier: bonusMultiplierApplied,
       demand_before: demandBeforeBonus,
       demand_after: demand,

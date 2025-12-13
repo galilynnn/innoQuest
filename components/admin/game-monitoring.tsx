@@ -295,13 +295,21 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
         const investmentConfig = gameSettings.investment_config as any
         const stageConfig = investmentConfig[stageKey]
         
-        if (!stageConfig || !stageConfig.bonus_multiplier) {
+        if (!stageConfig || stageConfig.bonus_multiplier === undefined) {
           console.error('No config found for stage:', stageKey)
           alert('No bonus multiplier configured for ' + currentStage)
           return
         }
         
-        newValue = stageConfig.bonus_multiplier
+        // bonus_multiplier from config: if >1, it's a percentage (50 = 50%), else decimal (0.5 = 50%)
+        const bonusValue = stageConfig.bonus_multiplier
+        if (bonusValue > 1) {
+          // Stored as percentage (50 = 50%), convert to multiplier
+          newValue = 1.0 + (bonusValue / 100)
+        } else {
+          // Stored as decimal (0.5 = 50%), convert to multiplier
+          newValue = 1.0 + bonusValue
+        }
       }
       
       const { error } = await supabase

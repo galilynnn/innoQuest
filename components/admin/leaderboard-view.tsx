@@ -57,10 +57,45 @@ export default function LeaderboardView() {
     }
   }
 
-  const handleBonusToggle = async (teamId: string, currentValue: number | null) => {
+  const handleBonusToggle = async (teamId: string, currentValue: number | null, currentStage: string) => {
     try {
-      // If bonus is currently null, set to 1.5x, otherwise clear it
-      const newValue = currentValue === null ? 1.5 : null
+      let newValue = null
+      
+      if (currentValue === null) {
+        // Fetch the bonus multiplier from game_settings investment_config based on funding stage
+        const { data: gameSettings, error: configError } = await supabase
+          .from('game_settings')
+          .select('investment_config')
+          .eq('game_id', gameId)
+          .single()
+        
+        if (configError || !gameSettings) {
+          console.error('Error fetching game settings:', configError)
+          alert('Failed to fetch bonus multiplier configuration')
+          return
+        }
+        
+        // Convert funding stage to match JSON keys (e.g., "Seed" -> "seed", "Series A" -> "series_a")
+        const stageKey = currentStage.toLowerCase().replace(/\s+/g, '_')
+        const investmentConfig = gameSettings.investment_config as any
+        const stageConfig = investmentConfig[stageKey]
+        
+        if (!stageConfig || stageConfig.bonus_multiplier === undefined) {
+          console.error('No config found for stage:', stageKey)
+          alert('No bonus multiplier configured for ' + currentStage)
+          return
+        }
+        
+        // bonus_multiplier from config: if >1, it's a percentage (50 = 50%), else decimal (0.5 = 50%)
+        const bonusValue = stageConfig.bonus_multiplier
+        if (bonusValue > 1) {
+          // Stored as percentage (50 = 50%), convert to multiplier
+          newValue = 1.0 + (bonusValue / 100)
+        } else {
+          // Stored as decimal (0.5 = 50%), convert to multiplier
+          newValue = 1.0 + bonusValue
+        }
+      }
       
       const { error } = await supabase
         .from('teams')
@@ -134,15 +169,15 @@ export default function LeaderboardView() {
                   <input
                     type="checkbox"
                     checked={team.bonus_multiplier_pending !== null}
-                    onChange={() => handleBonusToggle(team.team_id, team.bonus_multiplier_pending)}
+                    onChange={() => handleBonusToggle(team.team_id, team.bonus_multiplier_pending, team.funding_stage)}
                     className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    Grant 1.5× Bonus
+                    Grant Bonus ({team.funding_stage})
                   </span>
                   {team.bonus_multiplier_pending !== null && (
                     <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-1 rounded ml-1">
-                      Active Next Week
+                      {team.bonus_multiplier_pending}× Next Week
                     </span>
                   )}
                 </label>
