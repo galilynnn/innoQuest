@@ -104,6 +104,7 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
   const [loading, setLoading] = useState(false)
   const [rndTiers, setRndTiers] = useState<any[]>([])
   const [hasSubmitted, setHasSubmitted] = useState(false)
+  const [draftLoaded, setDraftLoaded] = useState(false)
 
   // Load R&D tier config from game settings
   useEffect(() => {
@@ -177,6 +178,56 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
 
     checkSubmission()
   }, [team.team_id, gameSettings.current_week])
+
+  // Load draft decisions from sessionStorage on mount
+  useEffect(() => {
+    const draftKey = `draft_decisions_${team.team_id}_week_${gameSettings.current_week}`
+    const savedDraft = sessionStorage.getItem(draftKey)
+    
+    if (savedDraft) {
+      try {
+        const draft = JSON.parse(savedDraft)
+        console.log('📥 Loading draft from sessionStorage:', draft)
+        
+        // Set all state at once to avoid multiple re-renders
+        if (draft.price !== undefined) setPrice(draft.price)
+        if (draft.rndStrategy !== undefined) setRndStrategy(draft.rndStrategy)
+        if (draft.rndSelections !== undefined) setRndSelections(draft.rndSelections)
+        if (draft.rndSelectionCounter !== undefined) setRndSelectionCounter(draft.rndSelectionCounter)
+        if (draft.selectedAnalyticsTools !== undefined) setSelectedAnalyticsTools(draft.selectedAnalyticsTools)
+        if (draft.analyticsCategory !== undefined) setAnalyticsCategory(draft.analyticsCategory)
+        
+        console.log('✅ Loaded draft decisions from sessionStorage')
+      } catch (error) {
+        console.error('Failed to load draft decisions:', error)
+      }
+    }
+    
+    // Mark as loaded after a short delay to ensure all state updates have settled
+    setTimeout(() => setDraftLoaded(true), 100)
+    
+    // Only run once on mount for this specific team/week combination
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Save draft decisions to sessionStorage whenever they change (but only after initial load)
+  useEffect(() => {
+    if (!draftLoaded) return // Don't save until draft is loaded
+    if (hasSubmitted) return // Don't save if already submitted
+    
+    const draftKey = `draft_decisions_${team.team_id}_week_${gameSettings.current_week}`
+    const draft = {
+      price,
+      rndStrategy,
+      rndSelections,
+      rndSelectionCounter,
+      selectedAnalyticsTools,
+      analyticsCategory
+    }
+    
+    console.log('💾 Saving draft to sessionStorage:', draft)
+    sessionStorage.setItem(draftKey, JSON.stringify(draft))
+  }, [price, rndStrategy, rndSelections, rndSelectionCounter, selectedAnalyticsTools, analyticsCategory, draftLoaded, hasSubmitted, team.team_id, gameSettings.current_week])
 
   // Load assigned product on mount
   useEffect(() => {
@@ -427,6 +478,12 @@ export default function WeeklyDecisions({ team, gameSettings }: WeeklyDecisionsP
       alert('Decisions submitted successfully!')
       setHasSubmitted(true)
       setShowConfirmation(false)
+      
+      // Clear draft from sessionStorage after successful submission
+      const draftKey = `draft_decisions_${team.team_id}_week_${gameSettings.current_week}`
+      sessionStorage.removeItem(draftKey)
+      console.log('🗑️ Cleared draft decisions from sessionStorage')
+      
       setPrice('0')
       setRndStrategy(null)
       setRndRound(0)

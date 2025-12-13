@@ -61,8 +61,8 @@ export default function GameOverviewPage() {
 
     loadSummaryData()
 
-    // Subscribe to real-time changes in game_settings
-    const channel = supabase
+    // Subscribe to real-time changes in game_settings, teams, and weekly_results
+    const settingsChannel = supabase
       .channel('game_settings_changes')
       .on(
         'postgres_changes',
@@ -87,8 +87,46 @@ export default function GameOverviewPage() {
       )
       .subscribe()
 
+    // Subscribe to teams changes (balance updates)
+    const teamsChannel = supabase
+      .channel('teams_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'teams',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Teams updated:', payload)
+          loadSummaryData()
+        }
+      )
+      .subscribe()
+
+    // Subscribe to weekly_results changes (new results added)
+    const resultsChannel = supabase
+      .channel('weekly_results_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'weekly_results',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Weekly results updated:', payload)
+          loadSummaryData()
+        }
+      )
+      .subscribe()
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(settingsChannel)
+      supabase.removeChannel(teamsChannel)
+      supabase.removeChannel(resultsChannel)
     }
   }, [router])
 
@@ -198,6 +236,9 @@ export default function GameOverviewPage() {
           })
         }
 
+        // Sort teams by total_balance in descending order (highest balance first)
+        teamSummaries.sort((a, b) => b.total_balance - a.total_balance)
+        
         setTeamsSummary(teamSummaries)
       }
 

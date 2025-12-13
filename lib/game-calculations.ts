@@ -372,6 +372,20 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
     })
   }
   
+  // Apply admin-granted bonus multiplier to demand (if present)
+  // NOTE: This multiplier affects DEMAND only, NOT Balance Awards
+  const bonusMultiplierApplied = input.bonus_multiplier_pending || null
+  if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 0) {
+    const demandBeforeBonus = demand
+    demand = Math.round(demand * bonusMultiplierApplied)
+    console.log(`🎁 Step 1.6 - Apply Admin Bonus Multiplier:`, {
+      bonus_multiplier: bonusMultiplierApplied,
+      demand_before: demandBeforeBonus,
+      demand_after: demand,
+      calculation: `${demandBeforeBonus} × ${bonusMultiplierApplied} = ${demand}`
+    })
+  }
+  
   console.log(`📊 Step 2 - Calculate Revenue:`, {
     formula: 'demand × price',
     demand: demand,
@@ -393,12 +407,6 @@ export function calculateWeeklyResults(input: WeeklyCalculationInput): WeeklyCal
   // Balance change = -totalCosts (no revenue added to balance)
   // Revenue is only used for milestone advancement criteria, NOT for balance
   let profit = -totalCosts
-
-  // Apply admin-granted bonus multiplier if present (applies to the expense deduction)
-  const bonusMultiplierApplied = input.bonus_multiplier_pending || null
-  if (bonusMultiplierApplied !== null && bonusMultiplierApplied > 0) {
-    profit = Math.round(profit * bonusMultiplierApplied)
-  }
 
   // Determine pass/fail status and funding stage progression
   const currentStage = input.current_funding_stage || 'Pre-Seed'

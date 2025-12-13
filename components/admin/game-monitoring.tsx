@@ -23,6 +23,11 @@ interface WeeklyResult {
   pass_fail_status: string
 }
 
+interface SubmissionStatus {
+  team_id: string
+  submitted: boolean
+}
+
 interface GameMonitoringProps {
   gameId: string
 }
@@ -35,34 +40,143 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
   const [weeklyResults, setWeeklyResults] = useState<WeeklyResult[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [submissionStatus, setSubmissionStatus] = useState<Map<string, boolean>>(new Map())
+  const [currentWeek, setCurrentWeek] = useState<number>(0)
 
   useEffect(() => {
+    loadGameSettings()
     loadTeams()
-    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId])
+
+  // Reload submission status whenever currentWeek changes
+  useEffect(() => {
+    if (currentWeek > 0) {
+      loadSubmissionStatus(currentWeek)
+    }
+  }, [currentWeek])
+
+  // Set up real-time subscriptions
+  useEffect(() => {
     // Set up real-time subscription for team balance updates
-    const channel = supabase
-      .channel('teams_balance_updates')
+    const teamsChannel = supabase
+      .channel('teams_monitoring_updates')
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'teams',
           filter: `game_id=eq.${gameId}`
         },
         (payload) => {
-          console.log('Team balance updated:', payload)
-          // Reload teams to get updated balance
+          console.log('Team updated:', payload)
           loadTeams()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('Teams channel subscription status:', status)
+      })
+    
+    // Set up real-time subscription for weekly_results (submission tracking)
+    const resultsChannel = supabase
+      .channel('weekly_results_monitoring')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'weekly_results'
+        },
+        (payload) => {
+          console.log('Weekly results changed:', payload)
+          // Reload submission status with current week
+          if (currentWeek > 0) {
+            loadSubmissionStatus(currentWeek)
+          }
+          // Also reload teams in case balances changed
+          loadTeams()
+        }
+      )
+      .subscribe((status) => {
+        console.log('Weekly results channel subscription status:', status)
+      })
+    
+    // Set up subscription for game_settings to detect week changes
+    const settingsChannel = supabase
+      .channel('game_settings_monitoring')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'game_settings',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Game settings updated:', payload)
+          // Reload everything when week advances
+          loadGameSettings()
+          loadTeams()
+        }
+      )
+      .subscribe((status) => {
+        console.log('Game settings channel subscription status:', status)
+      })
     
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(teamsChannel)
+      supabase.removeChannel(resultsChannel)
+      supabase.removeChannel(settingsChannel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId])
+  }, [gameId, currentWeek])
+
+  const loadGameSettings = async () => {
+    try {
+      const { data: settings } = await supabase
+        .from('game_settings')
+        .select('current_week')
+        .eq('game_id', gameId)
+        .single()
+      
+      if (settings) {
+        setCurrentWeek(settings.current_week)
+        loadSubmissionStatus(settings.current_week)
+      }
+    } catch (error) {
+      console.error('Error loading game settings:', error)
+    }
+  }
+
+  const loadSubmissionStatus = async (week?: number) => {
+    try {
+      const weekToCheck = week || currentWeek
+      if (weekToCheck === 0) return
+
+      // Get all teams
+      const { data: allTeams } = await supabase
+        .from('teams')
+        .select('team_id')
+        .eq('game_id', gameId)
+
+      // Get teams that have submitted for current week
+      const { data: submissions } = await supabase
+        .from('weekly_results')
+        .select('team_id')
+        .eq('week_number', weekToCheck)
+
+      const statusMap = new Map<string, boolean>()
+      allTeams?.forEach(team => {
+        const hasSubmitted = submissions?.some(s => s.team_id === team.team_id) || false
+        statusMap.set(team.team_id, hasSubmitted)
+      })
+
+      setSubmissionStatus(statusMap)
+    } catch (error) {
+      console.error('Error loading submission status:', error)
+    }
+  }
 
   const loadTeams = async () => {
     try {
@@ -229,7 +343,18 @@ export default function GameMonitoring({ gameId }: GameMonitoringProps) {
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="font-serif font-bold">#{idx + 1}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-serif font-bold">#{idx + 1}</span>
+                  {submissionStatus.get(team.team_id) ? (
+                    <span className="text-green-600 text-xs font-semibold bg-green-50 px-2 py-0.5 rounded" title="Submitted decisions for current week">
+                      ✓ Submitted
+                    </span>
+                  ) : (
+                    <span className="text-orange-600 text-xs font-semibold bg-orange-50 px-2 py-0.5 rounded" title="Not yet submitted">
+                      ⏳ Pending
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm opacity-75">{team.funding_stage}</span>
               </div>
               <p className="font-semibold text-left">{team.team_name}</p>

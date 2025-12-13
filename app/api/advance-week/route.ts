@@ -476,11 +476,8 @@ export async function POST(request: NextRequest) {
             } else {
               // Profit is NEGATIVE (expenses deducted from balance)
               // Revenue is NOT added to balance, only used for milestone criteria
-              let profitCalc = -totalCosts
-              if (calculationInput.bonus_multiplier_pending) {
-                profitCalc = Math.round(profitCalc * (calculationInput.bonus_multiplier_pending || 1))
-              }
-              profit = profitCalc
+              // NOTE: bonus_multiplier_pending is applied to DEMAND in calculateWeeklyResults(), not to profit
+              profit = -totalCosts
             }
 
             // Determine funding pass/fail using total successful tests -> include combined success
