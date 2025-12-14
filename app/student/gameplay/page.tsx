@@ -216,10 +216,8 @@ export default function StudentGameplay() {
 
       if (remaining <= 0) {
         setTimeRemaining(0)
-        // Week time expired, reload to get new week
-        console.log('⏰ Week time expired, reloading...')
-        setTimeout(() => window.location.reload(), 2000)
-        clearInterval(interval)
+        // Timer expired - wait for admin to manually advance the week
+        console.log('⏰ Week time expired - waiting for admin to advance')
       } else {
         setTimeRemaining(remaining)
       }

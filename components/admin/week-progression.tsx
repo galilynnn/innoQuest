@@ -91,8 +91,8 @@ export default function WeekProgression() {
 
       if (remaining <= 0) {
         setTimeRemaining(0)
-        handleAutoAdvance()
-        clearInterval(interval)
+        // Timer expired - admin must manually advance the week
+        console.log('⏰ Week time expired - waiting for admin to manually advance')
       } else {
         setTimeRemaining(remaining)
       }

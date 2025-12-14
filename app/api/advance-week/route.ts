@@ -39,6 +39,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if game is paused
+    if (settings.game_status === 'paused') {
+      return NextResponse.json(
+        { error: 'Game is paused. Cannot advance week while game is paused.' },
+        { status: 400 }
+      )
+    }
+
     // Check if we're on the last week - this should just end the game, not advance further
     const isLastWeek = settings.current_week === settings.total_weeks
 
@@ -96,7 +104,32 @@ export async function POST(request: NextRequest) {
     // Get initial_capital - this is the exact value admin sets in the dashboard
     // Convert to number in case it's stored as string in database
     const initialCapitalRaw = gameSettingsData?.initial_capital
-    const initialCapital = initialCapitalRaw != null ? Number(initialCapitalRaw) : 0
+    let initialCapital = initialCapitalRaw != null ? Number(initialCapitalRaw) : 0
+    
+    // CRITICAL: Validate initial_capital is set properly or fall back to checking team's initial balance
+    if (!initialCapital || initialCapital <= 0) {
+      console.warn('⚠️ Initial Capital not set in game_settings, checking teams initial balance...')
+      // Get the first team's balance to use as fallback (assuming all teams started with same amount)
+      if (teamsToProcess.length > 0) {
+        // Find a team that hasn't been modified yet to get original initial capital
+        const { data: firstWeekTeam } = await supabase
+          .from('weekly_results')
+          .select('team_id')
+          .eq('game_id', gameId)
+          .eq('week_number', 1)
+          .limit(1)
+          .maybeSingle()
+        
+        if (firstWeekTeam) {
+          // Get this team's starting balance from teams table or use current balance
+          const team = teamsToProcess.find(t => t.team_id === firstWeekTeam.team_id)
+          initialCapital = team?.total_balance || 200000 // Default to 200k if still can't find
+        } else {
+          initialCapital = 200000 // Default fallback
+        }
+      }
+      console.log(`Using fallback initial capital: ${initialCapital}`)
+    }
 
 
     // Process calculations for ALL teams that have joined the game
