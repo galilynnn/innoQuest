@@ -617,7 +617,7 @@ export default function StudentGameplay() {
                   <div className={`text-right text-xs ${gameSettings.is_paused ? 'text-yellow-700' : 'text-orange-700'}`}>
                     {gameSettings.is_paused 
                       ? 'You can still submit decisions while paused' 
-                      : timeRemaining <= 0 ? 'Advancing to next week...' : 'Waiting for admin...'
+                      : timeRemaining <= 0 ? 'Waiting for admin....' : 'Make you decision wisely~!'
                     }
                   </div>
                 </div>
