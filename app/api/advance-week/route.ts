@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     
     // CRITICAL: Validate initial_capital is set properly or fall back to checking team's initial balance
     if (!initialCapital || initialCapital <= 0) {
-      console.warn('⚠️ Initial Capital not set in game_settings, checking teams initial balance...')
+      console.warn('Initial Capital not set in game_settings, checking teams initial balance...')
       // Get the first team's balance to use as fallback (assuming all teams started with same amount)
       if (teamsToProcess.length > 0) {
         // Find a team that hasn't been modified yet to get original initial capital
@@ -275,13 +275,13 @@ export async function POST(request: NextRequest) {
             })
             
             if (recalcError) {
-              console.error(`❌ Failed to calculate probabilities:`, recalcError)
+              console.error(`Failed to calculate probabilities:`, recalcError)
             } else {
               // Small delay to ensure database transaction is committed
               await new Promise(resolve => setTimeout(resolve, 100))
             }
           } catch (recalcErr) {
-            console.error(`❌ Exception calculating probabilities:`, recalcErr)
+            console.error(`Exception calculating probabilities:`, recalcErr)
           }
         }
         

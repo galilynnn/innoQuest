@@ -302,7 +302,7 @@ export default function WeekProgression() {
                 <p className={`text-xs ${gameSettings.is_paused ? 'text-yellow-700' : 'text-orange-700'} mt-2`}>
                   {gameSettings.is_paused 
                     ? 'Students can still submit decisions during pause' 
-                    : timeRemaining <= 0 ? 'Advancing to next week...' : 'Week will auto-advance when timer ends'
+                    : timeRemaining <= 0 ? 'Advancing to next week...' : 'Ready to advance the week?'
                   }
                 </p>
               </div>
